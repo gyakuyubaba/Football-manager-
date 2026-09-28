@@ -24,13 +24,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build
-        run: npx vite build
+        run: npx vite build --emptyOutDir
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
