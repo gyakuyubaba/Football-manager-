@@ -1,0 +1,7 @@
+{
+  "name": "Football Manager 2026/27: Career Simulation",
+  "description": "Authentic realistic football manager career simulation starting in the 2026/27 season with real clubs, deep tactics, dynamic transfer market, and interactive matches.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

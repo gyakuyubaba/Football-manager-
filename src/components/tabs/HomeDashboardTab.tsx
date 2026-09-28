@@ -1,0 +1,279 @@
+import React from 'react';
+import { GameWorldState, MatchFixture } from '../../types/game';
+import { formatDateJP } from '../../engine/dateEngine';
+import { PRE_SEASON_TOURNAMENTS } from '../../data/initialData';
+import { 
+  Trophy, 
+  Calendar, 
+  ArrowRight, 
+  Newspaper, 
+  ShieldAlert, 
+  TrendingUp, 
+  DollarSign, 
+  Sparkles 
+} from 'lucide-react';
+
+interface Props {
+  state: GameWorldState;
+  onOpenMatch: (fixture: MatchFixture) => void;
+  onSelectPreSeason: (tournamentId: string) => void;
+  onNavigateTab: (tab: 'tactics' | 'transfers' | 'fixtures' | 'club') => void;
+}
+
+export const HomeDashboardTab: React.FC<Props> = ({ 
+  state, 
+  onOpenMatch, 
+  onSelectPreSeason,
+  onNavigateTab 
+}) => {
+  const userClub = state.userClubId ? state.clubs[state.userClubId] : null;
+
+  // Next upcoming user fixture
+  const nextFixture = state.fixtures.find(
+    f => (f.homeClubId === state.userClubId || f.awayClubId === state.userClubId) && f.status === 'upcoming'
+  );
+
+  const opponentClub = nextFixture
+    ? state.clubs[nextFixture.homeClubId === state.userClubId ? nextFixture.awayClubId : nextFixture.homeClubId]
+    : null;
+
+  const isHomeMatch = nextFixture?.homeClubId === state.userClubId;
+
+  // Available pre-season tour
+  const isPreSeasonOpen = state.currentDate <= '2026-07-15' && !state.selectedPreSeason;
+
+  return (
+    <div className="space-y-5 pb-20">
+      
+      {/* Hero Stadium Banner */}
+      <div className="relative rounded-3xl overflow-hidden border border-slate-800 shadow-2xl bg-slate-900">
+        <img 
+          src="/src/assets/images/stadium_pitch_hero_1790585035252.jpg" 
+          alt="Stadium Pitch" 
+          referrerPolicy="no-referrer"
+          className="w-full h-44 sm:h-56 object-cover object-center opacity-60"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent" />
+        
+        <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6">
+          <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold uppercase tracking-wider mb-1">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>2026/27 シーズン 監督キャリア進行中</span>
+          </div>
+          <h1 className="text-xl sm:text-3xl font-extrabold text-white tracking-tight font-display">
+            {userClub?.name}
+          </h1>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-slate-300 mt-1.5 font-medium">
+            <span>目標: {userClub?.target}</span>
+            <span aria-hidden="true">·</span>
+            <span>理事会信頼: <strong className="text-emerald-400 font-mono">{state.boardConfidence}%</strong></span>
+            <span aria-hidden="true">·</span>
+            <span>サポーター支持: <strong className="text-blue-400 font-mono">{state.fanApproval}%</strong></span>
+          </div>
+        </div>
+      </div>
+
+      {/* Pre-Season Tour Invitation Banner (if July) */}
+      {isPreSeasonOpen && (
+        <div className="bg-gradient-to-r from-amber-950/60 via-slate-900 to-slate-900 border border-amber-500/30 rounded-2xl p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">
+                <Trophy className="w-4 h-4" />
+                <span>プレシーズン・サマーツアー招待状（締切: 7月15日）</span>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-300">
+                新シーズンの開幕前に、賞金獲得と戦術の成熟を目的としたプレシーズン大会への参加を選択してください。
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {PRE_SEASON_TOURNAMENTS.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onSelectPreSeason(t.id)}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  {t.name.split(' (')[0]} (賞金 €{(t.prizeMoney / 1000000).toFixed(1)}M)
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Next Match Card */}
+      {nextFixture && opponentClub ? (
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
+          <div className="flex items-center justify-between text-xs text-slate-400 mb-4 pb-3 border-b border-slate-800">
+            <span className="font-semibold text-emerald-400 uppercase tracking-wider font-mono">
+              NEXT FIXTURE · {nextFixture.competitionName}
+            </span>
+            <span className="font-mono text-slate-300">{formatDateJP(nextFixture.date)}</span>
+          </div>
+
+          <div className="grid grid-cols-3 items-center py-2 sm:py-4">
+            {/* Home Team */}
+            <div className="flex flex-col items-center text-center">
+              <div 
+                className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center font-bold text-white text-base sm:text-xl shadow-lg mb-2"
+                style={{ backgroundColor: isHomeMatch ? userClub?.primaryColor : opponentClub.primaryColor }}
+              >
+                {isHomeMatch ? userClub?.shortName : opponentClub.shortName}
+              </div>
+              <div className="text-xs sm:text-sm font-bold text-white">
+                {isHomeMatch ? userClub?.name : opponentClub.name}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-0.5">
+                {isHomeMatch ? 'HOME' : 'AWAY'}
+              </span>
+            </div>
+
+            {/* Match VS / Time */}
+            <div className="flex flex-col items-center text-center">
+              <span className="text-xl sm:text-2xl font-black text-slate-400 tracking-wider font-display">
+                VS
+              </span>
+              <span className="text-xs text-slate-400 mt-1">
+                会場: {isHomeMatch ? userClub?.stadiumName : opponentClub.stadiumName}
+              </span>
+              {nextFixture.date === state.currentDate && (
+                <span className="mt-2 px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] font-bold animate-pulse">
+                  本日キックオフ
+                </span>
+              )}
+            </div>
+
+            {/* Away Team */}
+            <div className="flex flex-col items-center text-center">
+              <div 
+                className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center font-bold text-white text-base sm:text-xl shadow-lg mb-2"
+                style={{ backgroundColor: !isHomeMatch ? userClub?.primaryColor : opponentClub.primaryColor }}
+              >
+                {!isHomeMatch ? userClub?.shortName : opponentClub.shortName}
+              </div>
+              <div className="text-xs sm:text-sm font-bold text-white">
+                {!isHomeMatch ? userClub?.name : opponentClub.name}
+              </div>
+              <span className="text-[11px] text-slate-400 mt-0.5">
+                {!isHomeMatch ? 'HOME' : 'AWAY'}
+              </span>
+            </div>
+          </div>
+
+          {/* Action Row */}
+          <div className="mt-4 pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs text-slate-400">
+              ※スタメン選定や戦術変更は「戦術・編成」タブから調整できます。
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenMatch(nextFixture)}
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-bold text-xs sm:text-sm transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>試合マッチセンターへ進む</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center text-slate-400 text-sm">
+          現在予定されている直近の公式戦はありません。「次の日へ」または期間スキップで日程を進めてください。
+        </div>
+      )}
+
+      {/* Quick Status Bento Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* Transfer Budget */}
+        <div 
+          onClick={() => onNavigateTab('transfers')}
+          className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 cursor-pointer hover:border-slate-700 transition-colors"
+        >
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-1">
+            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+            <span>移籍補強予算</span>
+          </div>
+          <div className="text-lg sm:text-xl font-bold text-white font-mono">
+            €{((userClub?.transferBudget || 0) / 1000000).toFixed(1)}M
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">市場探査・補強交渉へ →</div>
+        </div>
+
+        {/* Squad Status */}
+        <div 
+          onClick={() => onNavigateTab('tactics')}
+          className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 cursor-pointer hover:border-slate-700 transition-colors"
+        >
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-1">
+            <TrendingUp className="w-3.5 h-3.5 text-blue-400" />
+            <span>スカッド構成</span>
+          </div>
+          <div className="text-lg sm:text-xl font-bold text-white font-mono">
+            {userClub?.playerIds.length || 0}名
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">フォーメーション: {state.tactics.formation} →</div>
+        </div>
+
+        {/* Board Confidence */}
+        <div 
+          onClick={() => onNavigateTab('club')}
+          className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 cursor-pointer hover:border-slate-700 transition-colors"
+        >
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-1">
+            <ShieldAlert className="w-3.5 h-3.5 text-purple-400" />
+            <span>理事会評価</span>
+          </div>
+          <div className="text-lg sm:text-xl font-bold text-emerald-400 font-mono">
+            {state.boardConfidence}%
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">解任リスク: 極めて低い</div>
+        </div>
+
+        {/* Transfer Window Status */}
+        <div 
+          onClick={() => onNavigateTab('transfers')}
+          className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 cursor-pointer hover:border-slate-700 transition-colors"
+        >
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-1">
+            <Calendar className="w-3.5 h-3.5 text-amber-400" />
+            <span>移籍市場状況</span>
+          </div>
+          <div className="text-sm font-bold text-amber-300">
+            {state.isTransferWindowOpen ? `開口中 (残${state.transferWindowClosingDays}日)` : '閉塞中'}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-0.5">8月31日デッドライン</div>
+        </div>
+      </div>
+
+      {/* Breaking News Feed (Linked to Game Events) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Newspaper className="w-4 h-4 text-emerald-400" />
+            <h3 className="text-base font-bold text-white">ゲーム連動型 最新ニュース & 移籍速報</h3>
+          </div>
+          <span className="text-xs text-slate-500 font-mono">{state.news.length}件</span>
+        </div>
+
+        <div className="divide-y divide-slate-800/80">
+          {state.news.slice(0, 5).map(item => (
+            <div key={item.id} className="py-3.5 first:pt-0 last:pb-0">
+              <div className="flex items-center gap-2 text-[11px] text-slate-400 mb-1 font-mono">
+                <span className="text-slate-300">{formatDateJP(item.date)}</span>
+                <span>·</span>
+                <span className="uppercase text-emerald-400 font-semibold">{item.category}</span>
+              </div>
+              <h4 className="text-sm font-bold text-white hover:text-emerald-300 transition-colors">
+                {item.headline}
+              </h4>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                {item.body}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  );
+};

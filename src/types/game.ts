@@ -1,0 +1,392 @@
+export type Position = 
+  | 'GK' 
+  | 'CB' | 'LB' | 'RB' | 'LWB' | 'RWB'
+  | 'CDM' | 'CM' | 'CAM' | 'LM' | 'RM'
+  | 'LW' | 'RW' | 'CF' | 'ST';
+
+export type PlayerCondition = 'pink' | 'red' | 'yellow' | 'cyan' | 'purple';
+// pink: 絶好調 (+8%), red: 好調 (+4%), yellow: 普通 (0%), cyan: 不調 (-4%), purple: 絶不調 (-8%)
+
+export type PlayerPersonality = 
+  | 'プロフェッショナル' // 高い練習意欲、文句が少ない
+  | '野心的' // ビッグクラブ移籍やタイトルを熱望
+  | '冷静沈着' // プレッシャーに強い
+  | 'リーダー気質' // チーム結束力を高める
+  | '出場機会重視' // 出番が減るとすぐ不満
+  | '給与重視' // 契約更新で好条件を要求
+  | 'タイトル至上主義' // 優勝を渇望
+  | 'クラブ愛' // 忠誠心が高く移籍しにくい;
+
+export type PlayStyle = 
+  | 'ゴールゲッター'
+  | 'チャンスメイカー'
+  | '俊足ドリブラー'
+  | 'スピードスター'
+  | 'ターゲットマン'
+  | 'ボックストゥボックス'
+  | 'アンカー'
+  | 'ボール運べるCB'
+  | '攻撃的SB'
+  | '守備的SB'
+  | 'ビルドアップ型GK'
+  | 'ショットストッパー';
+
+export type ManagerStyle = 
+  | '戦術至上主義' 
+  | '情熱型モチベーター' 
+  | '名伯楽（若手育成）' 
+  | '厳格なディシプリン' 
+  | '現実主義（結果重視）';
+
+export type TacticalType = 
+  | 'ゲーゲンプレス' 
+  | 'ティキタカ（ポゼッション）' 
+  | '堅守速攻（カウンター）' 
+  | 'ハイブリッドプレッシング' 
+  | '5バック低重心守備' 
+  | 'トータルフットボール';
+
+export type ManagerSpecialty = 
+  | '攻撃戦術' 
+  | '守備構築' 
+  | '若手育成' 
+  | '選手マネジメント' 
+  | '移籍交渉';
+
+export interface ManagerProfile {
+  name: string;
+  nationality: string;
+  age: number;
+  avatar: string;
+  style: ManagerStyle;
+  tacticalType: TacticalType;
+  specialty: ManagerSpecialty;
+  reputation: number; // 1 - 100
+  careerTrophies: number;
+  matchesManaged: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  nationalTeamOfferAvailable?: boolean;
+}
+
+export interface PlayerRelationship {
+  targetPlayerId: string;
+  relation: '盟友' | '良好' | '普通' | 'ライバル' | '不仲';
+}
+
+export interface PlayerStats {
+  appearances: number;
+  starts: number;
+  minutes: number;
+  goals: number;
+  assists: number;
+  cleanSheets: number;
+  yellowCards: number;
+  redCards: number;
+  avgRating: number;
+}
+
+export interface PlayerInjury {
+  isInjured: boolean;
+  type?: string;
+  recoveryDays?: number;
+  returnDate?: string;
+}
+
+export interface PlayerSuspension {
+  isSuspended: boolean;
+  matchesRemaining: number;
+  reason?: 'レッドカード' | '累積警告';
+}
+
+export interface Player {
+  id: string;
+  name: string;
+  age: number;
+  birthDate: string;
+  nationality: string;
+  position: Position;
+  altPositions: Position[];
+  preferredFoot: '右' | '左' | '両足';
+  ovr: number;
+  potential: number;
+  
+  // Specific Attributes (1-99)
+  pace: number;
+  shooting: number;
+  passing: number;
+  dribbling: number;
+  defending: number;
+  physical: number;
+  gk: number;
+
+  marketValue: number; // in Euros (€)
+  wage: number; // Weekly wage in Euros (€)
+  contractYears: number; // Remaining years
+  clubId: string;
+  squadRole: '絶対的主力' | '重要選手' | 'ローテーション' | '控え・バックアップ' | '若手・育成枠';
+
+  // Loan status
+  isLoaned: boolean;
+  loanFromClubId?: string;
+  loanOptionBuyFee?: number;
+  loanPlayingTimeGuaranteed?: boolean;
+
+  playstyle: PlayStyle;
+  personality: PlayerPersonality;
+  managerTrust: number; // 0 - 100
+  relationships: PlayerRelationship[];
+
+  condition: PlayerCondition;
+  fatigue: number; // 0 (fresh) - 100 (exhausted)
+  injury: PlayerInjury;
+  suspension: PlayerSuspension;
+
+  stats: PlayerStats;
+  shirtNumber: number;
+}
+
+export type LeagueKey = 
+  | 'premier-league'
+  | 'laliga'
+  | 'bundesliga'
+  | 'serie-a'
+  | 'ligue-1'
+  | 'j1-league';
+
+export type CupKey = 
+  | 'ucl'
+  | 'uel'
+  | 'uecl'
+  | 'fa-cup'
+  | 'carabao-cup'
+  | 'copa-del-rey'
+  | 'dfb-pokal'
+  | 'coppa-italia'
+  | 'coupe-de-france'
+  | 'emperor-cup'
+  | 'levain-cup'
+  | 'super-cup';
+
+export interface Club {
+  id: string;
+  name: string;
+  shortName: string;
+  league: LeagueKey;
+  country: string;
+  tier: 'Elite' | 'Upper' | 'Mid' | 'Lower';
+  reputation: number; // 1-100
+  transferBudget: number; // €
+  wageBudget: number; // € / week
+  currentWageSpend: number; // € / week
+  target: 'リーグ優勝' | 'チャンピオンズリーグ出場圏' | '欧州大会圏内' | '上位進出' | '中位安定' | 'J1残留' | 'カップ戦タイトル';
+  fanExpectation: '極めて高い（タイトル必須）' | '高い（上位争い）' | '現実的（堅実な戦い）' | '残留最優先';
+  stadiumName: string;
+  stadiumCapacity: number;
+  primaryColor: string;
+  secondaryColor: string;
+  currentFormation: FormationName;
+  playerIds: string[];
+  isUserClub?: boolean;
+}
+
+export type FormationName = 
+  | '4-3-3'
+  | '4-2-3-1'
+  | '4-4-2'
+  | '4-1-4-1'
+  | '4-4-1-1'
+  | '4-2-2-2'
+  | '3-5-2'
+  | '3-4-3'
+  | '3-4-2-1'
+  | '3-4-1-2'
+  | '3-1-4-2'
+  | '5-3-2'
+  | '5-4-1'
+  | '4-3-1-2';
+
+export interface TeamTactics {
+  formation: FormationName;
+  lineup: {
+    starters: { playerId: string; position: Position; pitchX: number; pitchY: number }[];
+    bench: string[];
+    reserves: string[];
+  };
+  instructions: {
+    attackingStyle: 'ポゼッション・パス' | 'ダイレクト・カウンター' | 'サイド攻撃・クロス' | '中央突破';
+    defensiveStyle: 'ハイプレス' | 'ミドルブロック' | 'ローブロック・堅守' | 'ゲーゲンプレス';
+    pressIntensity: '非常に激しい' | '標準的' | '自陣引き気味';
+    defensiveLine: 'ハイライン' | '標準' | 'ディープライン';
+    tempo: '高速テンポ' | '標準' | 'じっくりビルドアップ';
+    counterUrgency: 'ボール奪取時即カウンター' | '一度落ち着いて組み立て';
+  };
+  roles: {
+    captainId?: string;
+    penaltyTakerId?: string;
+    freeKickTakerId?: string;
+    cornerTakerId?: string;
+  };
+}
+
+export interface MatchEvent {
+  minute: number;
+  type: 'goal' | 'assist' | 'yellow_card' | 'red_card' | 'injury' | 'sub' | 'big_chance' | 'save' | 'penalty' | 'var';
+  clubId: string;
+  playerId: string;
+  playerName: string;
+  assistPlayerId?: string;
+  assistPlayerName?: string;
+  subInPlayerId?: string;
+  subInPlayerName?: string;
+  description: string;
+}
+
+export interface MatchStats {
+  homeScore: number;
+  awayScore: number;
+  possession: number; // e.g. 54 for 54%
+  shots: [number, number]; // [home, away]
+  shotsOnTarget: [number, number];
+  xG: [number, number];
+  corners: [number, number];
+  fouls: [number, number];
+  passesCompleted: [number, number];
+  passAccuracy: [number, number];
+  playerRatings: Record<string, number>; // playerId -> rating 1.0 - 10.0
+}
+
+export interface MatchFixture {
+  id: string;
+  date: string;
+  competition: LeagueKey | CupKey | 'pre-season';
+  competitionName: string;
+  homeClubId: string;
+  awayClubId: string;
+  status: 'upcoming' | 'playing' | 'halftime' | 'finished';
+  homeScore?: number;
+  awayScore?: number;
+  events?: MatchEvent[];
+  stats?: MatchStats;
+  motmPlayerId?: string;
+  isUserMatch: boolean;
+}
+
+export interface StandingsRow {
+  clubId: string;
+  clubName: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDiff: number;
+  points: number;
+  form: ('W' | 'D' | 'L')[];
+}
+
+export interface TransferNegotiation {
+  id: string;
+  playerId: string;
+  sellerClubId: string;
+  buyerClubId: string;
+  status: 'club_negotiating' | 'club_agreed' | 'player_negotiating' | 'completed' | 'collapsed';
+  isLoan: boolean;
+  buyOptionFee?: number;
+  
+  // Club Stage
+  initialAskingPrice: number;
+  currentBidFee: number;
+  clubPatience: number; // 1 to 4 warnings before walkout
+  clubMessages: { sender: 'user' | 'ai'; text: string; date: string }[];
+
+  // Player Stage
+  wageOffered: number;
+  wageDemanded: number;
+  contractYearsOffered: number;
+  squadRoleOffered: Player['squadRole'];
+  signingBonusOffered: number;
+  playerPatience: number;
+  playerMessages: { sender: 'agent' | 'user'; text: string; date: string }[];
+}
+
+export interface NewsItem {
+  id: string;
+  date: string;
+  headline: string;
+  body: string;
+  category: 'transfer' | 'match' | 'injury' | 'crisis' | 'press' | 'tournament' | 'youth';
+  relatedClubId?: string;
+  relatedPlayerId?: string;
+  importance: 'high' | 'medium' | 'low';
+}
+
+export interface YouthProspect {
+  id: string;
+  name: string;
+  age: number;
+  nationality: string;
+  position: Position;
+  ovr: number;
+  potential: number;
+  playstyle: PlayStyle;
+  personality: PlayerPersonality;
+  scoutReport: string;
+  promoted: boolean;
+}
+
+export interface SeasonHistory {
+  season: string;
+  clubId: string;
+  clubName: string;
+  leagueName: string;
+  leagueFinish: number;
+  cupResults: string[];
+  trophies: string[];
+  record: { played: number; wins: number; draws: number; losses: number };
+}
+
+export interface CareerSummary {
+  profile: ManagerProfile;
+  seasons: SeasonHistory[];
+  totalTrophiesWon: string[];
+  historyLog: string[];
+}
+
+export interface PreSeasonTournament {
+  id: string;
+  name: string;
+  region: string;
+  prizeMoney: number;
+  participants: string[];
+  matchesCount: number;
+  deadline: string;
+}
+
+export interface GameWorldState {
+  currentDate: string; // ISO string e.g. "2026-07-01"
+  season: string; // "2026/27"
+  isTransferWindowOpen: boolean;
+  transferWindowClosingDays: number;
+  manager: ManagerProfile;
+  userClubId: string | null;
+  boardConfidence: number; // 0 - 100
+  fanApproval: number; // 0 - 100
+  consecutiveLosses: number;
+  isSacked: boolean;
+
+  clubs: Record<string, Club>;
+  players: Record<string, Player>;
+  tactics: TeamTactics;
+  fixtures: MatchFixture[];
+  standings: Record<LeagueKey, StandingsRow[]>;
+  negotiations: Record<string, TransferNegotiation>;
+  news: NewsItem[];
+  youthAcademy: YouthProspect[];
+  careerHistory: SeasonHistory[];
+
+  selectedPreSeason?: string;
+  trainingFocus: 'バランス総合' | '攻撃・連係強化' | '守備戦術・プレス' | 'コンディション回復' | '若手重点育成';
+}
