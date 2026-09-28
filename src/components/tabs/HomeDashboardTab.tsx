@@ -1,4 +1,4 @@
-import stadiumImg from '../../assets/images/stadium.jpg';
+import stadiumImg from '../../assets/images/stadium_pitch_hero_17905.jpg';
 import React from 'react';
 import { GameWorldState, MatchFixture } from '../../types/game';
 import { formatDateJP } from '../../engine/dateEngine';
