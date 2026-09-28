@@ -1,4 +1,3 @@
-import stadiumImg from '../../assets/images/stadium_pitch_hero_1790544525881.jpg';
 import React from 'react';
 import { GameWorldState, MatchFixture } from '../../types/game';
 import { formatDateJP } from '../../engine/dateEngine';
@@ -49,7 +48,7 @@ export const HomeDashboardTab: React.FC<Props> = ({
       {/* Hero Stadium Banner */}
       <div className="relative rounded-3xl overflow-hidden border border-slate-800 shadow-2xl bg-slate-900">
         <img 
-          src={stadiumImg}
+          src="/Football-manager-/src/assets/images/stadium_pitch_hero_1790544525881.jpg"
           alt="Stadium Pitch" 
           referrerPolicy="no-referrer"
           className="w-full h-44 sm:h-56 object-cover object-center opacity-60"
