@@ -59,7 +59,7 @@ export const HomeDashboardTab: React.FC<Props> = ({
         <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6">
           <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold uppercase tracking-wider mb-1">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>2026/27 シーズン 監督キャリア進行中</span>
+            <span>2025/26 シーズン 監督キャリア進行中</span>
           </div>
           <h1 className="text-xl sm:text-3xl font-extrabold text-white tracking-tight font-display">
             {userClub?.name}
@@ -172,7 +172,7 @@ export const HomeDashboardTab: React.FC<Props> = ({
               onClick={() => onOpenMatch(nextFixture)}
               className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-bold text-xs sm:text-sm transition-all shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
             >
-              <span>試合マッチセンターへ進む</span>
+              <span>{nextFixture.date === state.currentDate ? '試合を開始する (Kickoff)' : '試合プレビュー・出場確認'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

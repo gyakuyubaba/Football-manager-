@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { GameWorldState, Player, Position, TransferNegotiation } from '../../types/game';
+import { GameWorldState, Player, Position, TransferNegotiation, IncomingAIOffer } from '../../types/game';
 import { 
   handleClubNegotiationStep, 
   handlePlayerNegotiationStep, 
-  executeTransferCompletion 
+  executeTransferCompletion,
+  evaluateAICounterProposal
 } from '../../engine/transferEngine';
 import { 
   Search, 
@@ -29,12 +30,15 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
   const [activeNegotiation, setActiveNegotiation] = useState<TransferNegotiation | null>(null);
 
   // Negotiation input states
+  const [negotiationType, setNegotiationType] = useState<'permanent' | 'loan' | 'buy_option' | 'dev_loan'>('permanent');
+  const [buyOptionFee, setBuyOptionFee] = useState<number>(0);
   const [bidFee, setBidFee] = useState<number>(0);
-  const [isLoanBid, setIsLoanBid] = useState<boolean>(false);
   const [wageOffer, setWageOffer] = useState<number>(0);
   const [contractYears, setContractYears] = useState<number>(3);
   const [squadRole, setSquadRole] = useState<Player['squadRole']>('重要選手');
   const [signingBonus, setSigningBonus] = useState<number>(500000);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [showSummaryModal, setShowSummaryModal] = useState<boolean>(false);
 
   const userClub = state.userClubId ? state.clubs[state.userClubId] : null;
 
@@ -49,9 +53,26 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
   // Sort by OVR descending
   allTargetPlayers.sort((a, b) => b.ovr - a.ovr);
 
+  const getCooldownDays = (playerId: string): number => {
+    const neg = state.negotiations[playerId];
+    if (!neg || !neg.cooldownUntil) return 0;
+    const diff = Math.ceil((new Date(neg.cooldownUntil).getTime() - new Date(state.currentDate).getTime()) / (1000 * 3600 * 24));
+    return Math.max(0, diff);
+  };
+
   const startNegotiation = (targetPlayer: Player) => {
+    const cooldown = getCooldownDays(targetPlayer.id);
+    if (cooldown > 0) {
+      alert(`この選手との交渉は、あと ${cooldown} 日間できません。`);
+      return;
+    }
+
     const sellerClub = state.clubs[targetPlayer.clubId];
     if (!sellerClub || !userClub) return;
+
+    setNegotiationType('permanent');
+    setBuyOptionFee(Math.round(targetPlayer.marketValue * 1.3));
+    setBudgetError(null);
 
     const initialBid = targetPlayer.marketValue;
     const initialNegotiation: TransferNegotiation = {
@@ -61,6 +82,7 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
       buyerClubId: userClub.id,
       status: 'club_negotiating',
       isLoan: false,
+      negotiationType: 'permanent',
       initialAskingPrice: Math.round(targetPlayer.marketValue * 1.15),
       currentBidFee: initialBid,
       clubPatience: 3,
@@ -91,8 +113,33 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
     const sellerClub = state.clubs[activeNegotiation.sellerClubId];
     if (!targetPlayer || !sellerClub) return;
 
-    const res = handleClubNegotiationStep(activeNegotiation, bidFee, sellerClub, targetPlayer);
+    // Budget check (Requirement 3)
+    if (bidFee > userClub.transferBudget) {
+      setBudgetError(`移籍予算が不足しています (所持予算: €${(userClub.transferBudget / 1000000).toFixed(1)}M / 提示額: €${(bidFee / 1000000).toFixed(1)}M)`);
+      return;
+    }
+    setBudgetError(null);
+
+    const updatedWithMode: TransferNegotiation = {
+      ...activeNegotiation,
+      isLoan: negotiationType !== 'permanent',
+      negotiationType,
+      buyOptionFee: negotiationType === 'buy_option' ? buyOptionFee : undefined
+    };
+
+    const res = handleClubNegotiationStep(updatedWithMode, bidFee, sellerClub, targetPlayer, state.currentDate);
     setActiveNegotiation(res.updatedNegotiation);
+
+    // Save cooldown in state if collapsed
+    if (res.isCollapsed && res.updatedNegotiation.cooldownUntil) {
+      onUpdateState({
+        ...state,
+        negotiations: {
+          ...state.negotiations,
+          [targetPlayer.id]: res.updatedNegotiation
+        }
+      });
+    }
 
     if (res.isAgreed) {
       // Initialize player stage
@@ -116,6 +163,14 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
     const targetPlayer = state.players[activeNegotiation.playerId];
     if (!targetPlayer) return;
 
+    // Wage budget check (Requirement 3)
+    const availableWage = userClub.wageBudget - userClub.currentWageSpend;
+    if (wageOffer > availableWage) {
+      setBudgetError(`週給予算が不足しています (空き週給枠: €${(availableWage / 1000).toFixed(0)}k / 提示週給: €${(wageOffer / 1000).toFixed(0)}k)`);
+      return;
+    }
+    setBudgetError(null);
+
     const res = handlePlayerNegotiationStep(
       activeNegotiation,
       wageOffer,
@@ -123,15 +178,159 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
       squadRole,
       signingBonus,
       targetPlayer,
-      userClub
+      userClub,
+      state.currentDate
     );
 
     setActiveNegotiation(res.updatedNegotiation);
+
+    if (res.isCollapsed && res.updatedNegotiation.cooldownUntil) {
+      onUpdateState({
+        ...state,
+        negotiations: {
+          ...state.negotiations,
+          [targetPlayer.id]: res.updatedNegotiation
+        }
+      });
+    }
 
     if (res.isCompleted) {
       // Finalize transfer atomically
       const updatedState = executeTransferCompletion(state, res.updatedNegotiation);
       onUpdateState(updatedState);
+    }
+  };
+
+  // Handle incoming AI offer action (Accept / Reject)
+  const handleIncomingOfferAction = (offerId: string, action: 'accept' | 'reject') => {
+    const offer = state.incomingOffers?.find(o => o.id === offerId);
+    if (!offer || !userClub) return;
+
+    if (action === 'reject') {
+      const updatedOffers = state.incomingOffers?.map(o => o.id === offerId ? { ...o, status: 'rejected' as const } : o);
+      onUpdateState({ ...state, incomingOffers: updatedOffers });
+      return;
+    }
+
+    // Accept transfer / loan
+    const targetPlayer = state.players[offer.playerId];
+    const buyerClub = state.clubs[offer.buyerClubId];
+    if (!targetPlayer || !buyerClub) return;
+
+    const mockNeg: TransferNegotiation = {
+      id: `in_neg_${Date.now()}`,
+      playerId: targetPlayer.id,
+      sellerClubId: userClub.id,
+      buyerClubId: buyerClub.id,
+      status: 'completed',
+      isLoan: offer.type !== 'permanent',
+      negotiationType: offer.type,
+      buyOptionFee: offer.buyOptionFee,
+      initialAskingPrice: offer.fee,
+      currentBidFee: offer.fee,
+      clubPatience: 3,
+      clubMessages: [],
+      wageOffered: targetPlayer.wage,
+      wageDemanded: targetPlayer.wage,
+      contractYearsOffered: 3,
+      squadRoleOffered: '重要選手',
+      signingBonusOffered: 0,
+      playerPatience: 3,
+      playerMessages: []
+    };
+
+    const nextState = executeTransferCompletion(state, mockNeg);
+    const updatedOffers = nextState.incomingOffers?.map(o => o.id === offerId ? { ...o, status: 'accepted' as const } : o);
+    onUpdateState({ ...nextState, incomingOffers: updatedOffers });
+    setDirectNegotiatingOfferId(null);
+  };
+
+  // Direct Negotiation for incoming offers (Requirements 5, 6, 7)
+  const [directNegotiatingOfferId, setDirectNegotiatingOfferId] = useState<string | null>(null);
+  const [proposedFee, setProposedFee] = useState<number>(0);
+  const [proposedBonus, setProposedBonus] = useState<number>(0);
+  const [installments, setInstallments] = useState<number>(1);
+  const [sellOnPercentage, setSellOnPercentage] = useState<number>(0);
+  const [buybackClause, setBuybackClause] = useState<boolean>(false);
+  const [negotiationAgreed, setNegotiationAgreed] = useState<boolean>(false);
+
+  const startDirectNegotiation = (offer: IncomingAIOffer) => {
+    setDirectNegotiatingOfferId(offer.id);
+    setProposedFee(offer.fee);
+    setProposedBonus(offer.bonusFee || 0);
+    setInstallments(offer.installments || 1);
+    setSellOnPercentage(offer.sellOnPercentage || 0);
+    setBuybackClause(offer.buybackClause || false);
+    setNegotiationAgreed(false);
+  };
+
+  const handleSendCounterProposal = (offer: IncomingAIOffer) => {
+    const targetPlayer = state.players[offer.playerId];
+    const buyerClub = state.clubs[offer.buyerClubId];
+    if (!targetPlayer || !buyerClub) return;
+
+    const result = evaluateAICounterProposal(
+      offer,
+      targetPlayer,
+      buyerClub,
+      proposedFee,
+      proposedBonus,
+      installments,
+      sellOnPercentage,
+      buybackClause
+    );
+
+    const updatedDialogue = [
+      ...(offer.dialogueHistory || []),
+      {
+        speaker: 'user' as const,
+        message: `監督/クラブ提示: 「移籍金 €${(proposedFee / 1000000).toFixed(1)}M${proposedBonus > 0 ? ` ＋ 活躍ボーナス €${(proposedBonus / 1000000).toFixed(1)}M` : ''}${installments > 1 ? ` (${installments}回分割)` : ''}${sellOnPercentage > 0 ? ` (次回売却益${sellOnPercentage}%)` : ''}${buybackClause ? ` (買戻し特約)` : ''} を提案する。」`,
+        termsSummary: `移籍金: €${(proposedFee / 1000000).toFixed(1)}M`
+      },
+      {
+        speaker: 'ai' as const,
+        message: `${buyerClub.name}: ${result.aiMessage}`,
+        termsSummary: result.decision === 'counter' ? `再提示: €${((result.counterFee || proposedFee) / 1000000).toFixed(1)}M` : undefined
+      }
+    ];
+
+    if (result.decision === 'accept') {
+      setNegotiationAgreed(true);
+      const updatedOffer: IncomingAIOffer = {
+        ...offer,
+        fee: proposedFee,
+        bonusFee: proposedBonus,
+        installments,
+        sellOnPercentage,
+        buybackClause,
+        aiPatience: result.newPatience,
+        dialogueHistory: updatedDialogue
+      };
+      const updatedOffers = state.incomingOffers?.map(o => o.id === offer.id ? updatedOffer : o);
+      onUpdateState({ ...state, incomingOffers: updatedOffers });
+    } else if (result.decision === 'reject') {
+      const updatedOffer: IncomingAIOffer = {
+        ...offer,
+        status: 'rejected',
+        aiPatience: 0,
+        dialogueHistory: updatedDialogue
+      };
+      const updatedOffers = state.incomingOffers?.map(o => o.id === offer.id ? updatedOffer : o);
+      onUpdateState({ ...state, incomingOffers: updatedOffers });
+    } else {
+      // Counter offer from AI
+      if (result.counterFee) setProposedFee(result.counterFee);
+      if (result.counterBonus !== undefined) setProposedBonus(result.counterBonus);
+      const updatedOffer: IncomingAIOffer = {
+        ...offer,
+        fee: result.counterFee || offer.fee,
+        bonusFee: result.counterBonus || offer.bonusFee,
+        aiPatience: result.newPatience,
+        negotiationRounds: (offer.negotiationRounds || 0) + 1,
+        dialogueHistory: updatedDialogue
+      };
+      const updatedOffers = state.incomingOffers?.map(o => o.id === offer.id ? updatedOffer : o);
+      onUpdateState({ ...state, incomingOffers: updatedOffers });
     }
   };
 
@@ -156,6 +355,13 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowSummaryModal(true)}
+            className="px-3.5 py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-colors"
+          >
+            📋 移籍市場まとめ
+          </button>
           <div className="bg-slate-950/80 border border-slate-800 px-4 py-2 rounded-2xl text-right">
             <div className="text-[11px] text-slate-400">使用可能 移籍予算</div>
             <div className="text-base sm:text-lg font-bold text-emerald-400 font-mono">
@@ -164,6 +370,288 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
           </div>
         </div>
       </div>
+
+      {/* INCOMING AI OFFERS SECTION (Requirement 7) */}
+      {state.incomingOffers && state.incomingOffers.filter(o => o.status === 'pending').length > 0 && (
+        <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-3xl p-4 sm:p-5 shadow-lg space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              <h3 className="text-sm font-bold text-emerald-300">
+                他クラブから届いている移籍オファー ({state.incomingOffers.filter(o => o.status === 'pending').length}件)
+              </h3>
+            </div>
+            <span className="text-[11px] text-slate-400">受諾すると移籍金がクラブ資金へ即時反映されます</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {state.incomingOffers.filter(o => o.status === 'pending').map(offer => {
+              const targetPlayer = state.players[offer.playerId];
+              const buyer = state.clubs[offer.buyerClubId];
+              if (!targetPlayer || !buyer) return null;
+
+              const isLoan = offer.type !== 'permanent';
+              return (
+                <div key={offer.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-bold text-white">{targetPlayer.name} ({targetPlayer.position})</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-blue-950 text-blue-300 font-mono font-bold">
+                        {offer.type === 'dev_loan' ? '育成レンタル' : isLoan ? 'レンタル' : '完全移籍'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-300">
+                      買い手: <strong className="text-emerald-400">{buyer.name}</strong>
+                    </div>
+                    <div className="text-xs font-mono font-bold text-emerald-400 mt-1">
+                      提示額: €{(offer.fee / 1000000).toFixed(1)}M {offer.buyOptionFee ? `(買取OP €${(offer.buyOptionFee / 1000000).toFixed(1)}M)` : ''}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80">
+                    <button
+                      type="button"
+                      onClick={() => handleIncomingOfferAction(offer.id, 'accept')}
+                      className="flex-1 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 text-xs font-bold transition-all shadow-sm cursor-pointer"
+                    >
+                      受諾
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startDirectNegotiation(offer)}
+                      className="flex-1 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+                    >
+                      直接交渉
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleIncomingOfferAction(offer.id, 'reject')}
+                      className="flex-1 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      拒否
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* DIRECT NEGOTIATION MODAL (Requirements 5, 6, 7 & 28) */}
+      {directNegotiatingOfferId && (() => {
+        const offer = state.incomingOffers?.find(o => o.id === directNegotiatingOfferId);
+        if (!offer) return null;
+        const targetPlayer = state.players[offer.playerId];
+        const buyerClub = state.clubs[offer.buyerClubId];
+        if (!targetPlayer || !buyerClub) return null;
+
+        const isRejected = offer.status === 'rejected';
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl space-y-4 my-auto">
+              
+              {/* Modal Header */}
+              <div className="flex items-start justify-between pb-3 border-b border-slate-800">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 text-xs font-bold">
+                      直接交渉ルーム
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      相手クラブ忍耐度: {'★'.repeat(offer.aiPatience ?? 3)}{'☆'.repeat(Math.max(0, 3 - (offer.aiPatience ?? 3)))}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white mt-1">
+                    {buyerClub.name} との移籍条件交渉
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDirectNegotiatingOfferId(null)}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Player Profile Summary */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-3 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] text-slate-400 block">対象選手</span>
+                  <span className="text-sm font-bold text-white">{targetPlayer.name} ({targetPlayer.position}, {targetPlayer.age}歳)</span>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    能力値: <strong className="text-emerald-400">OVR {targetPlayer.ovr}</strong> · 市場価値: <strong className="text-white font-mono">€{(targetPlayer.marketValue / 1000000).toFixed(1)}M</strong>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[11px] text-slate-400 block">買い手クラブ予算</span>
+                  <span className="text-sm font-mono font-bold text-blue-400">€{(buyerClub.transferBudget / 1000000).toFixed(1)}M</span>
+                  <span className="text-[10px] text-slate-500 block">格: {buyerClub.tier}</span>
+                </div>
+              </div>
+
+              {/* Dialogue History */}
+              <div className="space-y-2 max-h-48 overflow-y-auto p-3 bg-slate-950/90 border border-slate-800/80 rounded-2xl text-xs">
+                {(offer.dialogueHistory || []).map((diag, idx) => (
+                  <div key={idx} className={`p-2.5 rounded-xl ${diag.speaker === 'user' ? 'bg-blue-950/40 text-blue-200 border border-blue-900/50 ml-6' : 'bg-slate-900 text-slate-200 border border-slate-800 mr-6'}`}>
+                    <div className="font-semibold">{diag.message}</div>
+                    {diag.termsSummary && (
+                      <div className="text-[10px] text-slate-400 mt-1 font-mono">{diag.termsSummary}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Negotiation Terms Input Form (if not rejected) */}
+              {!isRejected ? (
+                <div className="space-y-3.5 bg-slate-950/40 border border-slate-800/80 rounded-2xl p-4">
+                  {/* Fee proposal */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-bold text-slate-300">① 基本移籍金（固定支払額）</span>
+                      <span className="font-mono font-bold text-emerald-400 text-sm">€{(proposedFee / 1000000).toFixed(1)}M</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {[-5000000, -2000000, 2000000, 5000000, 10000000].map(delta => (
+                        <button
+                          key={delta}
+                          type="button"
+                          onClick={() => setProposedFee(prev => Math.max(1000000, prev + delta))}
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono"
+                        >
+                          {delta > 0 ? `+€${delta / 1000000}M` : `-€${Math.abs(delta) / 1000000}M`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Bonus conditions */}
+                  <div>
+                    <span className="text-xs font-bold text-slate-300 block mb-1">② 成果インセンティブ・ボーナス</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
+                      {[
+                        { label: 'ボーナスなし', fee: 0 },
+                        { label: '欧州圏進出時 (+€3M)', fee: 3000000 },
+                        { label: '公式戦20試合 (+€5M)', fee: 5000000 },
+                        { label: 'リーグ優勝時 (+€8M)', fee: 8000000 }
+                      ].map(b => (
+                        <button
+                          key={b.fee}
+                          type="button"
+                          onClick={() => setProposedBonus(b.fee)}
+                          className={`p-2 rounded-xl border text-left transition-all ${
+                            proposedBonus === b.fee
+                              ? 'bg-blue-600/30 border-blue-500 text-white font-bold'
+                              : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+                          }`}
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Installments & Clauses */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                    {/* Installments */}
+                    <div>
+                      <span className="text-slate-400 block mb-1">③ 支払分割</span>
+                      <select
+                        value={installments}
+                        onChange={e => setInstallments(Number(e.target.value))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-white"
+                      >
+                        <option value={1}>一括払い (即時受取)</option>
+                        <option value={2}>2回分割払い (翌季受取)</option>
+                        <option value={3}>3回分割払い</option>
+                      </select>
+                    </div>
+
+                    {/* Sell on */}
+                    <div>
+                      <span className="text-slate-400 block mb-1">④ 次回売却時パーセンテージ</span>
+                      <select
+                        value={sellOnPercentage}
+                        onChange={e => setSellOnPercentage(Number(e.target.value))}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-white"
+                      >
+                        <option value={0}>条項なし (0%)</option>
+                        <option value={10}>売却益 10% 還元</option>
+                        <option value={15}>売却益 15% 還元</option>
+                        <option value={20}>売却益 20% 還元</option>
+                      </select>
+                    </div>
+
+                    {/* Buyback */}
+                    <div>
+                      <span className="text-slate-400 block mb-1">⑤ 買戻し条項</span>
+                      <select
+                        value={buybackClause ? 'yes' : 'no'}
+                        onChange={e => setBuybackClause(e.target.value === 'yes')}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-white"
+                      >
+                        <option value="no">付帯しない</option>
+                        <option value="yes">2年以内 €{(targetPlayer.marketValue * 1.5 / 1000000).toFixed(1)}M 買戻し権</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-red-950/50 border border-red-800 rounded-2xl p-4 text-center text-red-300 text-xs">
+                  <strong>交渉は決裂しました。</strong>
+                  <p className="mt-1 text-slate-400">相手クラブは提示条件に反発し、オファーを取り下げました。</p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
+                {!isRejected ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleIncomingOfferAction(offer.id, 'reject')}
+                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                    >
+                      交渉打ち切り・拒否
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSendCounterProposal(offer)}
+                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:scale-[0.98] text-white text-xs font-bold shadow-md shadow-blue-500/20 cursor-pointer"
+                      >
+                        相手クラブへ再提案を送信
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleIncomingOfferAction(offer.id, 'accept')}
+                        className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 text-xs font-black shadow-md shadow-emerald-500/20 cursor-pointer"
+                      >
+                        {negotiationAgreed ? '★ 合意内容で移籍成立！' : '提示条件で受諾'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full text-right">
+                    <button
+                      type="button"
+                      onClick={() => setDirectNegotiatingOfferId(null)}
+                      className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold cursor-pointer"
+                    >
+                      閉じる
+                    </button>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -271,13 +759,28 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
                     <div className="text-[10px] text-slate-500">週給 €{(p.wage / 1000).toFixed(0)}k · 契{p.contractYears}年</div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => startNegotiation(p)}
-                    className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 text-xs font-bold transition-all shadow-md shadow-emerald-500/10 cursor-pointer"
-                  >
-                    獲得交渉を開始
-                  </button>
+                  {getCooldownDays(p.id) > 0 ? (
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-[10px] text-amber-400 font-semibold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 font-mono">
+                        再交渉可能まであと {getCooldownDays(p.id)} 日
+                      </span>
+                      <button
+                        type="button"
+                        disabled
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 text-xs font-bold cursor-not-allowed opacity-60"
+                      >
+                        交渉凍結中 (10日ルール)
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startNegotiation(p)}
+                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 text-xs font-bold transition-all shadow-md shadow-emerald-500/10 cursor-pointer"
+                    >
+                      獲得交渉を開始
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -295,7 +798,7 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
             <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
               <div>
                 <span className="text-xs text-emerald-400 uppercase tracking-wider font-semibold font-mono">
-                  {activeNegotiation.status === 'club_negotiating' ? 'STAGE 1: クラブ間移籍金交渉' : activeNegotiation.status === 'player_negotiating' ? 'STAGE 2: 選手・代理人契約交渉' : 'TRANSFER NEGOTIATION'}
+                  {activeNegotiation.status === 'club_negotiating' ? 'STAGE 1: クラブ間移籍金・契約形態交渉' : activeNegotiation.status === 'player_negotiating' ? 'STAGE 2: 選手・代理人契約交渉' : 'TRANSFER NEGOTIATION'}
                 </span>
                 <h3 className="text-xl font-bold text-white mt-0.5">
                   {targetPlayerInNeg.name} ({targetPlayerInNeg.position}, {targetPlayerInNeg.age}歳)
@@ -314,10 +817,87 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
               </button>
             </div>
 
+            {/* Current Transfer Budget Bar */}
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 mb-4 flex items-center justify-between text-xs">
+              <span className="text-slate-400">貴クラブの利用可能 移籍予算:</span>
+              <span className="font-mono font-bold text-emerald-400 text-sm">
+                €{((userClub?.transferBudget || 0) / 1000000).toFixed(1)}M
+              </span>
+            </div>
+
+            {/* Budget Error Banner */}
+            {budgetError && (
+              <div className="bg-red-950/40 border border-red-500/50 rounded-2xl p-3 mb-4 text-xs text-red-300 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                <span>{budgetError}</span>
+              </div>
+            )}
+
             {/* STAGE 1: CLUB NEGOTIATION */}
             {activeNegotiation.status === 'club_negotiating' && (
               <div className="space-y-4">
-                <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 max-h-52 overflow-y-auto space-y-2.5">
+                {/* Contract Type Selector (Requirement 4, 6, 7) */}
+                <div className="space-y-1.5">
+                  <label className="text-xs text-slate-300 font-semibold block">移籍・レンタル契約形式</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setNegotiationType('permanent'); setBidFee(targetPlayerInNeg.marketValue); }}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all ${
+                        negotiationType === 'permanent' ? 'bg-emerald-500 text-slate-950 shadow' : 'bg-slate-800 text-slate-300 border border-slate-700'
+                      }`}
+                    >
+                      完全移籍
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setNegotiationType('loan'); setBidFee(Math.round(targetPlayerInNeg.marketValue * 0.12)); }}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all ${
+                        negotiationType === 'loan' ? 'bg-emerald-500 text-slate-950 shadow' : 'bg-slate-800 text-slate-300 border border-slate-700'
+                      }`}
+                    >
+                      期限付き移籍
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setNegotiationType('buy_option'); setBidFee(Math.round(targetPlayerInNeg.marketValue * 0.15)); }}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all ${
+                        negotiationType === 'buy_option' ? 'bg-emerald-500 text-slate-950 shadow' : 'bg-slate-800 text-slate-300 border border-slate-700'
+                      }`}
+                    >
+                      買取OP付き
+                    </button>
+                    <button
+                      type="button"
+                      disabled={targetPlayerInNeg.age > 22}
+                      onClick={() => { setNegotiationType('dev_loan'); setBidFee(Math.round(targetPlayerInNeg.marketValue * 0.08)); }}
+                      className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all ${
+                        negotiationType === 'dev_loan' 
+                          ? 'bg-emerald-500 text-slate-950 shadow' 
+                          : targetPlayerInNeg.age > 22 
+                          ? 'bg-slate-900/40 text-slate-600 border border-slate-800 cursor-not-allowed'
+                          : 'bg-slate-800 text-slate-300 border border-slate-700'
+                      }`}
+                    >
+                      育成型レンタル
+                    </button>
+                  </div>
+                </div>
+
+                {negotiationType === 'buy_option' && (
+                  <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+                    <label className="text-xs text-slate-300 block">付帯 買取オプション設定額 (€)</label>
+                    <input
+                      type="number"
+                      step={1000000}
+                      value={buyOptionFee}
+                      onChange={e => setBuyOptionFee(Number(e.target.value))}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-white"
+                    />
+                  </div>
+                )}
+
+                <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 max-h-48 overflow-y-auto space-y-2.5">
                   {activeNegotiation.clubMessages.map((msg, i) => (
                     <div 
                       key={i} 
@@ -369,9 +949,14 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
                   <button
                     type="button"
                     onClick={submitClubBid}
-                    className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-emerald-500/20 cursor-pointer"
+                    disabled={bidFee > (userClub?.transferBudget || 0)}
+                    className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${
+                      bidFee > (userClub?.transferBudget || 0)
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                        : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20 cursor-pointer'
+                    }`}
                   >
-                    €{(bidFee / 1000000).toFixed(1)}M の正式オファーを提示
+                    {bidFee > (userClub?.transferBudget || 0) ? '移籍予算不足' : `€${(bidFee / 1000000).toFixed(1)}M の正式オファーを提示`}
                   </button>
                 </div>
               </div>
@@ -461,9 +1046,14 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
                   <button
                     type="button"
                     onClick={submitPlayerContractBid}
-                    className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-md shadow-emerald-500/20 cursor-pointer"
+                    disabled={wageOffer > ((userClub?.wageBudget || 0) - (userClub?.currentWageSpend || 0))}
+                    className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${
+                      wageOffer > ((userClub?.wageBudget || 0) - (userClub?.currentWageSpend || 0))
+                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                        : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20 cursor-pointer'
+                    }`}
                   >
-                    個人合意の提示・契約書送付
+                    {wageOffer > ((userClub?.wageBudget || 0) - (userClub?.currentWageSpend || 0)) ? '給与予算超過' : '個人合意の提示・契約書送付'}
                   </button>
                 </div>
               </div>
@@ -502,8 +1092,8 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
                   交渉破談 (NEGOTIATION FAILED)
                 </h3>
                 <p className="text-sm text-slate-400 max-w-md mx-auto">
-                  提示条件が相手側の許容水準を満たさず、交渉は永久に打ち切られました。
-                  他のターゲットに切り替えて補強活動を進めてください。
+                  提示条件が相手側の許容水準を満たさず、交渉は打ち切られました。
+                  10日間ルールにより、この選手・クラブとの再交渉は10日間凍結されます。
                 </p>
                 <button
                   type="button"
@@ -518,6 +1108,106 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
           </div>
         </div>
       </div>
+      )}
+
+      {/* TRANSFER DEADLINE SUMMARY MODAL (Requirement 29) */}
+      {(showSummaryModal || state.showDeadlineSummary) && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md">
+          <div className="flex min-h-full items-start justify-center p-3 sm:p-6">
+            <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl my-4 sm:my-8 text-left pb-10">
+              
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+                <div>
+                  <span className="text-xs text-emerald-400 uppercase tracking-wider font-semibold font-mono">
+                    OFFICIAL TRANSFER RECAP
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white mt-0.5">
+                    移籍市場まとめ (全クラブ移籍・レンタル一覧)
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    自クラブおよび世界AIクラブ間で成立した全公式移籍ディールの一覧です。
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSummaryModal(false);
+                    if (state.showDeadlineSummary) {
+                      onUpdateState({ ...state, showDeadlineSummary: false });
+                    }
+                  }}
+                  className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {(!state.transferHistory || state.transferHistory.length === 0) ? (
+                <div className="text-center py-12 text-slate-500 text-sm">
+                  成立した移籍・レンタル取引はまだありません。
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-[60vh]">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-slate-950 text-slate-400 uppercase font-mono sticky top-0">
+                      <tr>
+                        <th className="py-2.5 px-3">選手</th>
+                        <th className="py-2.5 px-3">移籍元</th>
+                        <th className="py-2.5 px-3">移籍先</th>
+                        <th className="py-2.5 px-3 text-right">移籍金</th>
+                        <th className="py-2.5 px-3 text-center">形式</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/80">
+                      {state.transferHistory.map(tr => {
+                        const seller = state.clubs[tr.sellerClubId];
+                        const buyer = state.clubs[tr.buyerClubId];
+                        return (
+                          <tr key={tr.id} className="hover:bg-slate-800/40">
+                            <td className="py-2.5 px-3 font-bold text-white">{tr.playerName}</td>
+                            <td className="py-2.5 px-3 text-slate-300">{seller?.shortName || tr.sellerClubId}</td>
+                            <td className="py-2.5 px-3 text-emerald-400 font-semibold">{buyer?.shortName || tr.buyerClubId}</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-white">
+                              {tr.fee > 0 ? `€${(tr.fee / 1000000).toFixed(1)}M` : '€0 (復帰/フリー)'}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                tr.type === 'dev_loan'
+                                  ? 'bg-purple-950 text-purple-300 border border-purple-800'
+                                  : tr.type === 'loan'
+                                  ? 'bg-blue-950 text-blue-300 border border-blue-800'
+                                  : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                              }`}>
+                                {tr.type === 'dev_loan' ? '育成レンタル' : tr.type === 'loan' ? 'レンタル' : '完全移籍'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="text-right pt-4 border-t border-slate-800 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSummaryModal(false);
+                    if (state.showDeadlineSummary) {
+                      onUpdateState({ ...state, showDeadlineSummary: false });
+                    }
+                  }}
+                  className="px-6 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold"
+                >
+                  閉じる
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

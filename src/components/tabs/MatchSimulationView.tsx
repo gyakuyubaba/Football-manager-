@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MatchFixture, GameWorldState, TeamTactics, MatchEvent, Player } from '../../types/game';
-import { simulateFullMatch, generateAssistantCoachAdvice } from '../../engine/matchEngine';
+import { simulateFullMatch, generateAssistantCoachAdvice, finalMatchEligibilityCheck } from '../../engine/matchEngine';
 import { getDefaultTacticsForClub } from '../../data/squadPopulator';
 import { FatigueGauge, ConditionDot } from '../common/FatigueGauge';
 import { useI18n } from '../../i18n/LanguageContext';
@@ -18,7 +18,8 @@ import {
   Zap,
   Clock,
   Flame,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle
 } from 'lucide-react';
 
 interface Props {
@@ -70,6 +71,16 @@ export const MatchSimulationView: React.FC<Props> = ({
   // In-match substitution selector
   const [subPlayerOffId, setSubPlayerOffId] = useState<string | null>(null);
   const [subPlayerOnId, setSubPlayerOnId] = useState<string | null>(null);
+
+  // In-match injury modal state (Requirement 15: 試合中の怪我)
+  const [activeInjuryModalData, setActiveInjuryModalData] = useState<{
+    event: MatchEvent;
+    player: Player;
+    injuryType: string;
+    recoveryDays: number;
+    returnDate: string;
+  } | null>(null);
+  const [injurySubChoiceId, setInjurySubChoiceId] = useState<string | null>(null);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -123,6 +134,23 @@ export const MatchSimulationView: React.FC<Props> = ({
                   setActiveHighlightEvent(null);
                   isHighlightPausedRef.current = false;
                 }, pauseDuration);
+              } else if (e.type === 'injury' && e.clubId === state.userClubId) {
+                // Interactive In-Match Injury Flow (Requirement 15: 試合中の怪我)
+                setIsPlaying(false);
+                const p = state.players[e.playerId || ''] || simulatedResult?.updatedPlayers?.[e.playerId || ''];
+                const updatedP = simulatedResult?.updatedPlayers?.[e.playerId || ''] || p;
+                const injuryType = updatedP?.injury?.type || '足首捻挫';
+                const recoveryDays = updatedP?.injury?.recoveryDays || 14;
+                const returnDate = updatedP?.injury?.returnDate || updatedP?.injuryReturnDate || '未定';
+
+                setActiveInjuryModalData({
+                  event: e,
+                  player: p || updatedP,
+                  injuryType,
+                  recoveryDays,
+                  returnDate
+                });
+                setInjurySubChoiceId(null);
               } else if (e.type === 'red_card' || e.type === 'injury' || e.type === 'var' || e.type === 'save') {
                 // Pause timer briefly for VAR, red cards, injuries, and big saves
                 isHighlightPausedRef.current = true;
@@ -167,7 +195,71 @@ export const MatchSimulationView: React.FC<Props> = ({
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [revealedEvents]);
 
+  const [eligibilityError, setEligibilityError] = useState<string | null>(null);
+
+  const handleAutoReplaceIneligible = () => {
+    const currentStarters = [...tactics.lineup.starters];
+    let currentBench = [...tactics.lineup.bench];
+    let replacedAny = false;
+
+    // Available healthy candidates from bench or reserves
+    const availableHealthy = (state.clubs[state.userClubId || '']?.playerIds || [])
+      .map(id => state.players[id])
+      .filter(p => p && !p.injury?.isInjured && p.injuryStatus !== 'INJURED' && !p.suspension?.isSuspended && !currentStarters.some(s => s.playerId === p.id));
+
+    currentStarters.forEach((st, idx) => {
+      const p = state.players[st.playerId];
+      if (p && (p.injury?.isInjured || p.injuryStatus === 'INJURED' || p.suspension?.isSuspended || p.squadStatus === 'OUT_OF_SQUAD')) {
+        const candidate = availableHealthy.shift();
+        if (candidate) {
+          currentStarters[idx] = { ...st, playerId: candidate.id };
+          currentBench = currentBench.filter(id => id !== candidate.id);
+          replacedAny = true;
+        }
+      }
+    });
+
+    if (replacedAny) {
+      setTactics({
+        ...tactics,
+        lineup: {
+          ...tactics.lineup,
+          starters: currentStarters,
+          bench: currentBench
+        }
+      });
+      setEligibilityError(null);
+    }
+  };
+
   const handleStartKickoff = () => {
+    // 1. Match date check (Requirement 12)
+    if (fixture.date > state.currentDate) {
+      setEligibilityError(`この試合はまだ開始できません。(試合予定日: ${fixture.date} / 現在ゲーム日: ${state.currentDate})`);
+      return;
+    }
+
+    // 2. Final Match Eligibility Check (Requirement 9 & 10)
+    const currentStarters = tactics.lineup.starters.map(s => state.players[s.playerId]).filter(Boolean);
+    const injured = currentStarters.filter(p => p.injury?.isInjured || p.injuryStatus === 'INJURED');
+    if (injured.length > 0) {
+      setEligibilityError(`【負傷警告】${injured.map(p => p.name).join('、')}選手は負傷しているため、この試合には出場できません。選手を変更してください。`);
+      return;
+    }
+
+    const suspended = currentStarters.filter(p => p.suspension?.isSuspended);
+    if (suspended.length > 0) {
+      setEligibilityError(`【出場停止】${suspended.map(p => p.name).join('、')}選手は出場停止処分中のため出場できません。選手を変更してください。`);
+      return;
+    }
+
+    const outOfSquad = currentStarters.filter(p => p.squadStatus === 'OUT_OF_SQUAD');
+    if (outOfSquad.length > 0) {
+      setEligibilityError(`【ベンチ外】${outOfSquad.map(p => p.name).join('、')}選手はベンチ外に設定されています。スタメン登録を確認してください。`);
+      return;
+    }
+
+    setEligibilityError(null);
     setMatchPhase('first_half');
     setIsPlaying(true);
   };
@@ -252,6 +344,83 @@ export const MatchSimulationView: React.FC<Props> = ({
 
     setSubPlayerOffId(null);
     setSubPlayerOnId(null);
+  };
+
+  // Confirm Injury Substitution (Requirement 15: 試合中の怪我)
+  const handleConfirmInjurySubstitution = () => {
+    if (!activeInjuryModalData) return;
+    const { player: injuredPlayer, injuryType, recoveryDays, returnDate } = activeInjuryModalData;
+
+    if (injurySubChoiceId && subCount < 5) {
+      const subInPlayer = state.players[injurySubChoiceId];
+      
+      const subEvent: MatchEvent = {
+        minute,
+        type: 'sub',
+        clubId: state.userClubId || '',
+        playerId: injuredPlayer.id,
+        playerName: injuredPlayer.name,
+        subInPlayerId: subInPlayer?.id,
+        subInPlayerName: subInPlayer?.name,
+        description: `🔄 負傷交代 (${minute}分): OUT: ${injuredPlayer.name} (負傷退場・全治${recoveryDays}日) ➔ IN: ${subInPlayer?.name} (${subInPlayer?.position})`
+      };
+
+      setRevealedEvents(prev => [...prev, subEvent]);
+      setSubCount(c => c + 1);
+
+      const newStarters = tactics.lineup.starters.map(s => {
+        if (s.playerId === injuredPlayer.id) {
+          return { ...s, playerId: injurySubChoiceId };
+        }
+        return s;
+      });
+      const newBench = tactics.lineup.bench.filter(id => id !== injurySubChoiceId);
+
+      setTactics({
+        ...tactics,
+        lineup: {
+          ...tactics.lineup,
+          starters: newStarters,
+          bench: newBench
+        }
+      });
+    } else {
+      const tenManEvent: MatchEvent = {
+        minute,
+        type: 'sub',
+        clubId: state.userClubId || '',
+        playerId: injuredPlayer.id,
+        playerName: injuredPlayer.name,
+        description: `🚑 負傷退場 (${minute}分): ${injuredPlayer.name}が負傷によりピッチを去りました（交代枠なし・10名で試合続行）`
+      };
+      setRevealedEvents(prev => [...prev, tenManEvent]);
+
+      const newStarters = tactics.lineup.starters.filter(s => s.playerId !== injuredPlayer.id);
+      setTactics({
+        ...tactics,
+        lineup: {
+          ...tactics.lineup,
+          starters: newStarters,
+          bench: tactics.lineup.bench
+        }
+      });
+    }
+
+    if (simulatedResult?.updatedPlayers?.[injuredPlayer.id]) {
+      simulatedResult.updatedPlayers[injuredPlayer.id].injury = {
+        isInjured: true,
+        type: injuryType,
+        recoveryDays,
+        returnDate
+      };
+      simulatedResult.updatedPlayers[injuredPlayer.id].injuryStatus = 'INJURED';
+      simulatedResult.updatedPlayers[injuredPlayer.id].injuryReturnDate = returnDate;
+      simulatedResult.updatedPlayers[injuredPlayer.id].squadStatus = 'OUT_OF_SQUAD';
+    }
+
+    setActiveInjuryModalData(null);
+    setInjurySubChoiceId(null);
+    setIsPlaying(true);
   };
 
   // Extract all goals scored so far for header display
@@ -414,6 +583,47 @@ export const MatchSimulationView: React.FC<Props> = ({
       {/* MAIN SIMULATION WORKSPACE */}
       <div className="flex-1 max-w-5xl mx-auto w-full px-3.5 sm:px-6 py-4 space-y-4">
         
+        {/* Pre-Match Eligibility or Date Alert Banner (Requirements 9, 10, 12) */}
+        {matchPhase === 'pre' && (
+          <>
+            {fixture.date > state.currentDate && (
+              <div className="bg-amber-950/80 border border-amber-600/60 rounded-2xl p-4 flex items-center justify-between gap-3 text-amber-200">
+                <div className="flex items-center gap-2.5">
+                  <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+                  <span className="text-xs sm:text-sm font-semibold">
+                    この試合はまだ開始できません。試合予定日: <span className="font-bold text-white">{fixture.date}</span> (現在ゲーム日: {state.currentDate})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shrink-0 cursor-pointer"
+                >
+                  日程に戻る
+                </button>
+              </div>
+            )}
+
+            {eligibilityError && (
+              <div className="bg-red-950/80 border border-red-600/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-red-200 animate-in fade-in duration-200">
+                <div className="flex items-center gap-2.5">
+                  <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+                  <span className="text-xs sm:text-sm font-bold">
+                    {eligibilityError}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAutoReplaceIneligible}
+                  className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-400 active:scale-[0.98] text-slate-950 text-xs font-black shadow-md shadow-red-500/20 cursor-pointer shrink-0"
+                >
+                  健全な選手と自動交代して解決
+                </button>
+              </div>
+            )}
+          </>
+        )}
+
         {/* Speed & Timeline Playback Controls (Requirement 3) */}
         <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-md">
           {/* Play / Pause / Kickoff Button */}
@@ -422,10 +632,19 @@ export const MatchSimulationView: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={handleStartKickoff}
-                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-emerald-500/20 cursor-pointer"
+                disabled={fixture.date > state.currentDate}
+                className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-lg transition-all cursor-pointer ${
+                  fixture.date > state.currentDate
+                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                    : 'bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 shadow-emerald-500/20'
+                }`}
               >
                 <Play className="w-4 h-4 fill-current" />
-                <span>{t.kickoff}</span>
+                <span>
+                  {fixture.date > state.currentDate 
+                    ? `この試合はまだ開始できません (${fixture.date})` 
+                    : t.kickoff}
+                </span>
               </button>
             )}
 
@@ -880,6 +1099,108 @@ export const MatchSimulationView: React.FC<Props> = ({
                 <span>{t.proceedToPress}</span>
                 <ArrowRight className="w-5 h-5 stroke-[2.5]" />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* IN-MATCH INJURY SUBSTITUTION MODAL (Requirement 15: 試合中の怪我) */}
+        {activeInjuryModalData && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-slate-900 border-2 border-red-500/80 rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
+              {/* 1. Header: 「○○選手が負傷しました」 */}
+              <div className="flex items-center gap-3 border-b border-red-500/30 pb-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-red-400 uppercase tracking-wider block">
+                    緊急選手交代要請 (Injury Stoppage {minute}&apos;)
+                  </span>
+                  <h3 className="text-lg font-black text-white">
+                    {activeInjuryModalData.player.name} 選手が負傷しました
+                  </h3>
+                </div>
+              </div>
+
+              {/* 2. Message: 「○○選手はプレー続行できません」 */}
+              <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-800/60 space-y-1">
+                <div className="text-sm font-bold text-red-300 flex items-center gap-2">
+                  <span>❌</span>
+                  <span>{activeInjuryModalData.player.name} 選手はプレー続行できません</span>
+                </div>
+                <div className="text-xs text-slate-300">
+                  初期診断：<strong className="text-white">{activeInjuryModalData.injuryType}</strong>（全治約{activeInjuryModalData.recoveryDays}日・復帰予定: {activeInjuryModalData.returnDate}）
+                </div>
+              </div>
+
+              {/* 3. Choose replacement player: 交代選手を選択 */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-200">
+                    交代選手を選択してください (ベンチメンバー / 残り交代枠: {5 - subCount})
+                  </span>
+                  <span className="text-slate-400 font-mono">
+                    {userBench.length}名 待機中
+                  </span>
+                </div>
+
+                {subCount < 5 && userBench.length > 0 ? (
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                    {userBench.map(p => {
+                      const isSelected = injurySubChoiceId === p.id;
+                      const isInj = p.injury?.isInjured || p.injuryStatus === 'INJURED';
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          disabled={isInj}
+                          onClick={() => setInjurySubChoiceId(p.id)}
+                          className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-emerald-950/60 border-emerald-500 ring-2 ring-emerald-500/40'
+                              : isInj
+                              ? 'opacity-40 bg-slate-950 border-slate-900 cursor-not-allowed'
+                              : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <span className="w-5 text-slate-500 font-mono text-[11px]">#{p.shirtNumber}</span>
+                              <span className="w-8 font-bold text-blue-400 font-mono text-xs">{p.position}</span>
+                              <div>
+                                <div className="text-xs font-bold text-white">{p.name}</div>
+                                <div className="text-[10px] text-slate-400">{p.age}歳 · {p.playstyle}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-emerald-400">OVR {p.ovr}</span>
+                              <span className="text-[10px] text-slate-400">疲労 {p.fatigue}%</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-amber-300">
+                    交代枠上限(5枠)に達しているか、ベンチに選手がいないため、残り時間を10名で戦うことになります。
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Action button */}
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleConfirmInjurySubstitution}
+                  disabled={subCount < 5 && userBench.length > 0 && !injurySubChoiceId}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 active:scale-[0.98] text-white font-bold text-xs sm:text-sm cursor-pointer shadow-lg shadow-red-600/30 transition-all"
+                >
+                  {subCount < 5 && userBench.length > 0
+                    ? (injurySubChoiceId ? '交代を実行して試合再開' : '交代選手を選択してください')
+                    : '10人で試合を再開する'}
+                </button>
+              </div>
             </div>
           </div>
         )}

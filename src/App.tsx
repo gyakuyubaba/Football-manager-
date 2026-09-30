@@ -18,6 +18,7 @@ import {
   resetGameWorldToInitial
 } from './engine/gameState';
 import { advanceOneDay, fastForwardUntil } from './engine/dateEngine';
+import { exerciseLoanBuyOption } from './engine/transferEngine';
 import { HeaderNav } from './components/HeaderNav';
 import { BottomTabBar, MainTab } from './components/BottomTabBar';
 import { ManagerCreationModal } from './components/ManagerCreationModal';
@@ -183,13 +184,35 @@ export default function App() {
       reputation: Math.min(99, gameState.manager.reputation + (userScore > oppScore ? 1 : 0))
     };
 
+    // Generate post-match news for any injuries that occurred in this fixture (Requirement 15: 試合後の怪我ニュース反映)
+    const injuryEvents = (updatedFixture.events || []).filter(e => e.type === 'injury');
+    const injuryNewsItems: NewsItem[] = [];
+    injuryEvents.forEach((e, idx) => {
+      const p = updatedPlayers[e.playerId || ''];
+      if (p && p.injury?.isInjured) {
+        const isUserClub = p.clubId === gameState.userClubId;
+        const targetClub = gameState.clubs[p.clubId];
+        injuryNewsItems.push({
+          id: `news_inj_${Date.now()}_${p.id}_${idx}`,
+          date: gameState.currentDate,
+          headline: `【負傷離脱】${p.name}が試合中に負傷退場。${p.injury.type}で全治${p.injury.recoveryDays}日、復帰予定は${p.injury.returnDate || p.injuryReturnDate || '未定'}`,
+          body: `先日の公式戦で負傷交代を余儀なくされた${targetClub?.name || ''}所属の${p.name}選手について、精密検査の結果「${p.injury.type}」と診断されました。離脱期間は約${p.injury.recoveryDays}日（復帰予定日: ${p.injury.returnDate || p.injuryReturnDate || '未定'}）となる見込みです。戦線離脱期間中は別メニュー調整となります。`,
+          category: 'match',
+          relatedClubId: p.clubId,
+          relatedPlayerId: p.id,
+          importance: isUserClub ? 'high' : 'medium'
+        });
+      }
+    });
+
     const nextState: GameWorldState = {
       ...gameState,
       fixtures: updatedFixtures,
       players: updatedPlayers,
       manager: updatedManager,
       consecutiveLosses,
-      boardConfidence
+      boardConfidence,
+      news: injuryNewsItems.length > 0 ? [...injuryNewsItems, ...gameState.news] : gameState.news
     };
 
     setGameState(nextState);
@@ -277,6 +300,42 @@ export default function App() {
     setDayAlertMessage(`【昇格完了】${prospect.name} がトップチームに登録されました！`);
   };
 
+  const handleToggleTransferList = (playerId: string) => {
+    if (!gameState) return;
+    const player = gameState.players[playerId];
+    if (!player) return;
+    const updated = { ...player, isTransferListed: !player.isTransferListed };
+    setGameState({
+      ...gameState,
+      players: { ...gameState.players, [playerId]: updated }
+    });
+    setInspectingPlayer(updated);
+  };
+
+  const handleToggleLoanList = (playerId: string) => {
+    if (!gameState) return;
+    const player = gameState.players[playerId];
+    if (!player) return;
+    const updated = { ...player, isLoanListed: !player.isLoanListed };
+    setGameState({
+      ...gameState,
+      players: { ...gameState.players, [playerId]: updated }
+    });
+    setInspectingPlayer(updated);
+  };
+
+  const handleExerciseBuyOption = (player: Player) => {
+    if (!gameState) return;
+    const res = exerciseLoanBuyOption(gameState, player.id);
+    if (res.success) {
+      setGameState(res.updatedState);
+      setInspectingPlayer(res.updatedState.players[player.id]);
+      setDayAlertMessage(res.message);
+    } else {
+      setDayAlertMessage(res.message);
+    }
+  };
+
   // Complete Career Reset with Automated Verification (Requirements 9-13)
   const handleExecuteResetCareer = (): { success: boolean; error?: string } => {
     // 1. Run automated verification & reset
@@ -317,7 +376,11 @@ export default function App() {
       <ClubOfferModal 
         manager={gameState.manager} 
         offers={offers} 
-        onSelectClub={handleClubSelected} 
+        onSelectClub={handleClubSelected}
+        onBackToManagerCreation={() => {
+          clearGameState();
+          setGameState(null);
+        }}
       />
     );
   }
@@ -352,6 +415,7 @@ export default function App() {
             state={gameState}
             onUpdateTactics={handleUpdateTactics}
             onSelectPlayer={(p) => setInspectingPlayer(p)}
+            onUpdateState={(ns) => setGameState(ns)}
           />
         )}
 
@@ -418,6 +482,10 @@ export default function App() {
         <PlayerDetailModal
           player={inspectingPlayer}
           club={stateClubForPlayer(gameState, inspectingPlayer.clubId)}
+          isUserPlayer={inspectingPlayer.clubId === gameState.userClubId}
+          onToggleTransferList={handleToggleTransferList}
+          onToggleLoanList={handleToggleLoanList}
+          onExerciseBuyOption={handleExerciseBuyOption}
           onClose={() => setInspectingPlayer(null)}
         />
       )}

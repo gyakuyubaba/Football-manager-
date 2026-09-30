@@ -7,10 +7,22 @@ import { Shield, Heart, Zap, Award, AlertTriangle, Calendar, DollarSign, X } fro
 interface Props {
   player: Player | null;
   club: Club | null;
+  isUserPlayer?: boolean;
+  onToggleTransferList?: (playerId: string) => void;
+  onToggleLoanList?: (playerId: string) => void;
+  onExerciseBuyOption?: (player: Player) => void;
   onClose: () => void;
 }
 
-export const PlayerDetailModal: React.FC<Props> = ({ player, club, onClose }) => {
+export const PlayerDetailModal: React.FC<Props> = ({ 
+  player, 
+  club, 
+  isUserPlayer = false,
+  onToggleTransferList,
+  onToggleLoanList,
+  onExerciseBuyOption,
+  onClose 
+}) => {
   const { t } = useI18n();
   if (!player) return null;
 
@@ -90,7 +102,10 @@ export const PlayerDetailModal: React.FC<Props> = ({ player, club, onClose }) =>
             <span className="text-[10px] text-slate-500 block">健康状態・出場資格</span>
             <div className="text-xs font-bold mt-0.5">
               {player.injury.isInjured ? (
-                <span className="text-red-400 font-semibold">{player.injury.type} (全治{player.injury.recoveryDays}日)</span>
+                <div className="space-y-0.5">
+                  <span className="text-red-400 font-semibold block">{player.injury.type} (全治{player.injury.recoveryDays}日)</span>
+                  <span className="text-[10px] text-slate-400 font-mono block">復帰予定: {player.injury.returnDate || player.injuryReturnDate || '診断中'}</span>
+                </div>
               ) : player.suspension.isSuspended ? (
                 <span className="text-amber-400 font-semibold">停止中 (残{player.suspension.matchesRemaining}試合)</span>
               ) : (
@@ -144,6 +159,51 @@ export const PlayerDetailModal: React.FC<Props> = ({ player, club, onClose }) =>
             <span className="text-xs font-bold text-purple-300 mt-0.5 block">{player.personality}</span>
           </div>
         </div>
+
+        {/* Transfer & Loan Listing Operations (Requirement 5 & 6) */}
+        {isUserPlayer && (
+          <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 mb-4 space-y-3">
+            <div className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-between">
+              <span>移籍・レンタル リスト管理</span>
+              <span className="text-[10px] text-slate-400 font-normal">リスト登録するとAIクラブからオファーが届きやすくなります</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onToggleTransferList && onToggleTransferList(player.id)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  player.isTransferListed
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                }`}
+              >
+                {player.isTransferListed ? '✓ 移籍リストから除外' : '＋ 移籍リストに追加'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onToggleLoanList && onToggleLoanList(player.id)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  player.isLoanListed
+                    ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                }`}
+              >
+                {player.isLoanListed ? '✓ 期限付き移籍リストから除外' : '＋ 期限付き移籍リストに追加'}
+              </button>
+
+              {player.isLoaned && player.loanOptionBuyFee && onExerciseBuyOption && (
+                <button
+                  type="button"
+                  onClick={() => onExerciseBuyOption(player)}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold shadow-md shadow-emerald-500/20"
+                >
+                  買取オプションを行使 (€{(player.loanOptionBuyFee / 1000000).toFixed(1)}M)
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="text-right pt-2">
           <button

@@ -209,73 +209,8 @@ export const ADDITIONAL_CLUB_SEEDS: Record<string, RosterSeed[]> = {
     { name: 'Matvey Safonov', position: 'GK', age: 27, nationality: 'ロシア', ovr: 80, shirtNumber: 39 }
   ],
 
-  // J1 LEAGUE ADDITIONAL CLUBS
-  gamba_osaka: [
-    { name: '一森 純 (Jun Ichimori)', position: 'GK', age: 35, nationality: '日本', ovr: 73, shirtNumber: 22 },
-    { name: '中谷 進之介 (Shinnosuke Nakatani)', position: 'CB', age: 30, nationality: '日本', ovr: 74, shirtNumber: 20 },
-    { name: '福岡 将太 (Shota Fukuoka)', position: 'CB', age: 30, nationality: '日本', ovr: 72, shirtNumber: 2 },
-    { name: '半田 陸 (Riku Handa)', position: 'RB', age: 24, nationality: '日本', ovr: 73, shirtNumber: 3 },
-    { name: '黒川 圭介 (Keisuke Kurokawa)', position: 'LB', age: 29, nationality: '日本', ovr: 72, shirtNumber: 4 },
-    { name: 'ダワン (Dawhan)', position: 'CDM', age: 30, nationality: 'ブラジル', ovr: 74, shirtNumber: 23 },
-    { name: '鈴木 徳真 (Tokuma Suzuki)', position: 'CM', age: 29, nationality: '日本', ovr: 72, shirtNumber: 16 },
-    { name: '山田 康太 (Kota Yamada)', position: 'CAM', age: 27, nationality: '日本', ovr: 73, shirtNumber: 9 },
-    { name: 'ウェルトン (Welton)', position: 'LW', age: 29, nationality: 'ブラジル', ovr: 74, shirtNumber: 97 },
-    { name: '宇佐美 貴史 (Takashi Usami)', position: 'ST', age: 34, nationality: '日本', ovr: 75, shirtNumber: 7 },
-    { name: '坂本 一樹 (Isa Sakamoto)', position: 'ST', age: 23, nationality: '日本', ovr: 71, shirtNumber: 13 },
-    { name: 'ファン・アラーノ (Juan Alano)', position: 'RW', age: 29, nationality: 'ブラジル', ovr: 73, shirtNumber: 47 },
-    { name: '食野 亮太郎 (Ryotaro Meshino)', position: 'RW', age: 28, nationality: '日本', ovr: 72, shirtNumber: 8 },
-    { name: '倉田 秋 (Shu Kurata)', position: 'CM', age: 37, nationality: '日本', ovr: 70, shirtNumber: 10 },
-    { name: '三浦 弦太 (Genta Miura)', position: 'CB', age: 31, nationality: '日本', ovr: 71, shirtNumber: 5 },
-    { name: '岸本 武流 (Takeru Kishimoto)', position: 'RB', age: 29, nationality: '日本', ovr: 71, shirtNumber: 15 },
-    { name: '東口 順昭 (Masaaki Higashiguchi)', position: 'GK', age: 40, nationality: '日本', ovr: 71, shirtNumber: 1 },
-    { name: '美藤 倫 (Rin Mito)', position: 'CM', age: 24, nationality: '日本', ovr: 69, shirtNumber: 27 }
-  ],
+  };
 
-  kashima: [
-    { name: '早川 友基 (Tomoki Hayakawa)', position: 'GK', age: 27, nationality: '日本', ovr: 73, shirtNumber: 1 },
-    { name: '植田 直通 (Naomichi Ueda)', position: 'CB', age: 31, nationality: '日本', ovr: 74, shirtNumber: 55 },
-    { name: '関川 郁万 (Ikuma Sekigawa)', position: 'CB', age: 26, nationality: '日本', ovr: 73, shirtNumber: 5 },
-    { name: '濃野 公人 (Kimito Nono)', position: 'RB', age: 24, nationality: '日本', ovr: 74, shirtNumber: 32 },
-    { name: '安西 幸輝 (Koki Anzai)', position: 'LB', age: 31, nationality: '日本', ovr: 73, shirtNumber: 2 },
-    { name: '知念 慶 (Kei Chinen)', position: 'CDM', age: 31, nationality: '日本', ovr: 74, shirtNumber: 13 },
-    { name: '柴崎 岳 (Gaku Shibasaki)', position: 'CM', age: 34, nationality: '日本', ovr: 73, shirtNumber: 20 },
-    { name: '名古 新太郎 (Shintaro Nago)', position: 'CAM', age: 30, nationality: '日本', ovr: 73, shirtNumber: 30 },
-    { name: '仲間 隼斗 (Hayato Nakama)', position: 'LW', age: 34, nationality: '日本', ovr: 72, shirtNumber: 33 },
-    { name: '鈴木 優磨 (Yuma Suzuki)', position: 'ST', age: 30, nationality: '日本', ovr: 76, shirtNumber: 40 },
-    { name: '師岡 柊生 (Shu Morooka)', position: 'ST', age: 25, nationality: '日本', ovr: 72, shirtNumber: 36 },
-    { name: 'チャヴリッチ (Aleksandar Čavrić)', position: 'ST', age: 32, nationality: 'セルビア', ovr: 74, shirtNumber: 7 },
-    { name: '樋口 雄太 (Yuta Higuchi)', position: 'CM', age: 29, nationality: '日本', ovr: 72, shirtNumber: 14 },
-    { name: 'ターレス・ブレーネル (Tales Brener)', position: 'RW', age: 28, nationality: 'ブラジル', ovr: 72, shirtNumber: 17 },
-    { name: '須貝 英大 (Hidehiro Sugai)', position: 'RB', age: 27, nationality: '日本', ovr: 71, shirtNumber: 16 },
-    { name: '津久井 佳祐 (Keisuke Tsukui)', position: 'CB', age: 22, nationality: '日本', ovr: 69, shirtNumber: 42 },
-    { name: '梶川 裕嗣 (Yuji Kajikawa)', position: 'GK', age: 35, nationality: '日本', ovr: 70, shirtNumber: 29 },
-    { name: '徳田 誉 (Homare Tokuda)', position: 'ST', age: 19, nationality: '日本', ovr: 68, shirtNumber: 34 }
-  ],
-
-  tokyo_verdy: [
-    { name: 'マテウス・ヴィドット (Matheus Vidotto)', position: 'GK', age: 33, nationality: 'ブラジル', ovr: 72, shirtNumber: 1 },
-    { name: '谷口 栄斗 (Hiroto Taniguchi)', position: 'CB', age: 26, nationality: '日本', ovr: 72, shirtNumber: 3 },
-    { name: '林 尚輝 (Naoki Hayashi)', position: 'CB', age: 28, nationality: '日本', ovr: 71, shirtNumber: 4 },
-    { name: '綱島 悠斗 (Yuto Tsunashima)', position: 'CB', age: 25, nationality: '日本', ovr: 71, shirtNumber: 23 },
-    { name: '宮原 和也 (Kazuya Miyahara)', position: 'RWB', age: 30, nationality: '日本', ovr: 72, shirtNumber: 6 },
-    { name: '翁長 聖 (Hijiri Onaga)', position: 'LWB', age: 31, nationality: '日本', ovr: 71, shirtNumber: 22 },
-    { name: '森田 晃樹 (Koki Morita)', position: 'CM', age: 26, nationality: '日本', ovr: 73, shirtNumber: 7 },
-    { name: '見木 友哉 (Tomoya Miki)', position: 'CM', age: 28, nationality: '日本', ovr: 73, shirtNumber: 10 },
-    { name: '齋藤 功佑 (Kosuke Saito)', position: 'CAM', age: 29, nationality: '日本', ovr: 71, shirtNumber: 8 },
-    { name: '木村 勇大 (Yudai Kimura)', position: 'ST', age: 25, nationality: '日本', ovr: 73, shirtNumber: 20 },
-    { name: '染野 唯月 (Itsuki Someno)', position: 'ST', age: 24, nationality: '日本', ovr: 72, shirtNumber: 9 },
-    { name: '山見 大登 (Hiroto Yamami)', position: 'LW', age: 27, nationality: '日本', ovr: 72, shirtNumber: 11 },
-    { name: '山田 楓喜 (Fuki Yamada)', position: 'RW', age: 25, nationality: '日本', ovr: 72, shirtNumber: 18 },
-    { name: 'チアゴ・アウベス (Tiago Alves)', position: 'ST', age: 33, nationality: 'ブラジル', ovr: 71, shirtNumber: 14 },
-    { name: '松橋 優安 (Yuan Matsuhashi)', position: 'RW', age: 24, nationality: '日本', ovr: 70, shirtNumber: 33 },
-    { name: '稲見 哲行 (Tetsuyuki Inami)', position: 'CDM', age: 27, nationality: '日本', ovr: 70, shirtNumber: 25 },
-    { name: '長沢 祐弥 (Yuya Nagasawa)', position: 'GK', age: 30, nationality: '日本', ovr: 68, shirtNumber: 21 },
-    { name: '食野 壮磨 (Soma Meshino)', position: 'CM', age: 25, nationality: '日本', ovr: 69, shirtNumber: 28 }
-  ]
-};
-
-// Complete roster name seeds pool for domestic and international clubs
-// to generate authentic real squad depth for remaining clubs without any generic placeholders!
 export const REAL_FOOTBALL_NAMES_DATABASE: Record<string, { names: string[]; nationalities: string[] }> = {
   'イングランド': {
     names: [
@@ -351,36 +286,5 @@ export const REAL_FOOTBALL_NAMES_DATABASE: Record<string, { names: string[]; nat
       'Jonathan Clauss', 'Melvin Bard', 'Dante', 'Youssouf Ndayishimiye', 'Marcin Bułka'
     ],
     nationalities: ['フランス', 'ブラジル', 'アルゼンチン', 'セネガル', 'コートジボワール', 'モロッコ', 'アルジェリア', 'ベルギー']
-  },
-  '日本': {
-    names: [
-      '毎熊 晟矢 (Seiya Maikuma)', '香川 真司 (Shinji Kagawa)', '田中 駿汰 (Shunta Tanaka)', '西尾 隆矢 (Ryuya Nishio)', '登里 享平 (Kyohei Noborizato)',
-      'レオ・セアラ (Leo Ceará)', 'カピシャーバ (Capixaba)', 'ルーカス・フェルナンデス (Lucas Fernandes)', 'キム・ジンヒョン (Kim Jin-hyeon)', '鳥海 晃司 (Koji Toriumi)',
-      '荒木 遼太郎 (Ryotaro Araki)', '長友 佑都 (Yuto Nagatomo)', '森重 真人 (Masato Morishige)', '仲川 輝人 (Teruhito Nakagawa)', '高 宇洋 (Ko Takahiro)',
-      '小泉 慶 (Kei Koizumi)', 'ディエゴ・オリヴェイラ (Diego Oliveira)', 'エンリケ・トレヴィザン (Henrique Trevisan)', '野澤 大志ブランドン (Taishi Brandon Nozawa)', '俵積田 晃太 (Kota Tawaratsumida)',
-      'ランゲラック (Mitchell Langerak)', '稲垣 祥 (Sho Inagaki)', '森島 司 (Tsukasa Morishima)', '和泉 竜司 (Ryuji Izumi)', 'キャスパー・ユンカー (Kasper Junker)',
-      'パトリック (Patric)', '永井 謙佑 (Kensuke Nagai)', '三國 ケネディエブス (Kennedyebs Mikuni)', '河面 旺成 (Akinari Kawazura)', '内田 宅哉 (Takuya Uchida)',
-      'アンデルソン・ロペス (Anderson Lopes)', 'ヤン・マテウス (Yan Matheus)', 'エウベル (Elber)', '喜田 拓也 (Takuya Kida)', '渡辺 皓太 (Kota Watanabe)',
-      '天野 純 (Jun Amano)', '松原 健 (Ken Matsubara)', '永戸 勝也 (Katsuya Nagato)', 'エドゥアルド (Eduardo)', 'ポープ・ウィリアム (William Popp)',
-      '脇坂 泰斗 (Yasuto Wakizaka)', '橘田 健人 (Kento Tachibanada)', '大島 僚太 (Ryota Oshima)', '家長 昭博 (Akihiro Ienaga)', 'エリソン (Erison)',
-      'マルシーニョ (Marcinho)', '山田 新 (Shin Yamada)', '高井 幸大 (Kota Takai)', '佐々木 旭 (Asahi Sasaki)', 'チョン・ソンリョン (Jung Sung-ryong)',
-      'シャハブ・ザヘディ (Shahab Zahedi)', '紺野 和也 (Kazuya Konno)', 'ウェリントン (Wellington)', '前 寛之 (Hiroyuki Mae)', '松岡 大起 (Daiki Matsuoka)',
-      '岩崎 悠人 (Yuto Iwasaki)', 'ドウグラス・グローリ (Douglas Grolli)', '奈良 竜樹 (Tatsuki Nara)', '村上 昌謙 (Masaaki Murakami)', '田代 雅也 (Masaya Tashiro)',
-      'ラファエル・エリアス (Rafael Elias)', '原 大智 (Taichi Hara)', 'マルコ・トゥーリオ (Marco Túlio)', '川﨑 颯太 (Sota Kawasaki)', '平戸 太貴 (Taiki Hirato)',
-      '鈴木 義宜 (Yoshinori Suzuki)', '麻田 将吾 (Shogo Asada)', '福田 心之助 (Shinnosuke Fukuda)', '三竿 雄斗 (Yuto Misao)', 'ク・ソンユン (Gu Sung-yun)',
-      'ルキアン (Lukian)', '鈴木 章斗 (Akito Suzuki)', '福田 翔生 (Sho Fukuda)', '田中 聡 (Satoshi Tanaka)', '池田 昌夕 (Masaki Ikeda)',
-      '鈴木 雄斗 (Yuto Suzuki)', '畑 大雅 (Taiga Hata)', 'キム・ミンテ (Kim Min-tae)', '大野 和成 (Kazunari Ono)', '上福元 直人 (Naoto Kamifukumoto)',
-      '谷口 海斗 (Kaito Taniguchi)', '小野 裕二 (Yuji Ono)', '長谷川 元希 (Motoki Hasegawa)', '秋山 裕紀 (Hiroki Akiyama)', '宮本 英治 (Eiji Miyamoto)',
-      '藤原 奏哉 (Soya Fujiwara)', '堀米 悠斗 (Yuto Horigome)', 'トーマス・デン (Thomas Deng)', '舞行龍ジェームズ (Michael James Fitzgerald)', '小島 亨介 (Ryosuke Kojima)',
-      '細谷 真大 (Mao Hosoya)', 'マテウス・サヴィオ (Matheus Sávio)', '木下 康介 (Kosuke Kinoshita)', '小屋松 知哉 (Tomoya Koyamatsu)', '白井 永地 (Eiji Shirai)',
-      '関根 大輝 (Hiroki Sekine)', 'ジエゴ (Diego)', '古賀 太陽 (Taiyo Koga)', '犬飼 智也 (Tomoya Inukai)', '松本 健太 (Kenta Matsumoto)',
-      'ジャーメイン 良 (Ryo Germain)', 'マテウス・ペイショット (Matheus Peixoto)', '平川 怜 (Rei Hirakawa)', '上原 力也 (Rikiya Uehara)', 'レオ・ゴメス (Leo Gomes)',
-      '松原 后 (Ko Matsubara)', '植村 洋斗 (Hiroto Uemura)', 'リカルド・グラッサ (Ricardo Graça)', '伊藤 槙人 (Makito Ito)', '川島 永嗣 (Eiji Kawashima)',
-      '鈴木 武蔵 (Musashi Suzuki)', 'スパチョーク (Supachok Sarachat)', '青木 亮太 (Ryota Aoki)', '近藤 友喜 (Tomoki Kondo)', '駒井 善成 (Yoshiaki Komai)',
-      '荒野 拓馬 (Takuma Arano)', '菅 大輝 (Daiki Suga)', '岡村 大八 (Daihachi Okamura)', '中村 桐耶 (Toya Nakamura)', '菅野 孝憲 (Takanori Sugeno)',
-      'マルセロ・ヒアン (Marcelo Ryan)', 'ヴィニシウス・アラウージョ (Vinícius Araújo)', '富樫 敬真 (Cayman Togashi)', '福田 晃斗 (Akito Fukuda)', '長沼 洋一 (Yoichi Naganuma)',
-      '原田 亘 (Wataru Harada)', '木村 誠二 (Seiji Kimura)', '山﨑 浩介 (Kosuke Yamazaki)', '丸橋 祐介 (Yusuke Maruhashi)', '朴 一圭 (Park Il-gyu)'
-    ],
-    nationalities: ['日本', 'ブラジル', '韓国', 'タイ', 'オーストラリア']
   }
 };

@@ -20,10 +20,10 @@ interface Props {
   manager: ManagerProfile;
   offers: Club[];
   onSelectClub: (clubId: string) => void;
+  onBackToManagerCreation?: () => void;
 }
 
 const LEAGUES: { id: LeagueKey; name: string; flag: string }[] = [
-  { id: 'j1-league', name: 'J1リーグ (20クラブ)', flag: '🇯🇵' },
   { id: 'premier-league', name: 'プレミアリーグ (20クラブ)', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
   { id: 'laliga', name: 'ラ・リーガ (20クラブ)', flag: '🇪🇸' },
   { id: 'bundesliga', name: 'ブンデスリーガ (18クラブ)', flag: '🇩🇪' },
@@ -31,10 +31,10 @@ const LEAGUES: { id: LeagueKey; name: string; flag: string }[] = [
   { id: 'ligue-1', name: 'リーグ・アン (18クラブ)', flag: '🇫🇷' }
 ];
 
-export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub }) => {
-  const [selectedClubId, setSelectedClubId] = useState<string>(offers[0]?.id || 'vissel_kobe');
+export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub, onBackToManagerCreation }) => {
+  const [selectedClubId, setSelectedClubId] = useState<string>(offers[0]?.id || 'arsenal');
   const [viewMode, setViewMode] = useState<'offers' | 'all'>('offers');
-  const [selectedLeague, setSelectedLeague] = useState<LeagueKey>('j1-league');
+  const [selectedLeague, setSelectedLeague] = useState<LeagueKey>('premier-league');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Find currently selected club from all clubs
@@ -58,7 +58,7 @@ export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub 
         <div className="text-center mb-5">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-2">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>2026/27 SEASON OFFICIAL PROPOSALS</span>
+            <span>2025/26 SEASON OFFICIAL PROPOSALS</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-display">
             監督就任オファーの受諾・クラブ決定
@@ -69,7 +69,7 @@ export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub 
         </div>
 
         {/* View Mode Switcher */}
-        <div className="flex items-center justify-center gap-2 mb-5">
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-5">
           <button
             type="button"
             onClick={() => setViewMode('offers')}
@@ -92,6 +92,15 @@ export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub 
           >
             🌍 全116クラブから自由に選択
           </button>
+          {onBackToManagerCreation && (
+            <button
+              type="button"
+              onClick={onBackToManagerCreation}
+              className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer"
+            >
+              ← 監督設定に戻る
+            </button>
+          )}
         </div>
 
         {/* MODE 1: 5 OFFICIAL OFFERS */}

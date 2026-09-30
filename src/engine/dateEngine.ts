@@ -96,6 +96,8 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
         p.injury.isInjured = false;
         p.injury.recoveryDays = 0;
         p.injury.returnDate = undefined;
+        p.injuryStatus = 'FIT';
+        p.injuryReturnDate = undefined;
         if (p.clubId === state.userClubId) {
           stoppedReason = `【戦列復帰】主力選手の${p.name}が怪我から全体練習に完全合流しました！`;
         }
@@ -111,13 +113,16 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
         recoveryDays: days,
         returnDate: addDays(nextDate, days)
       };
+      p.injuryStatus = 'INJURED';
+      p.injuryReturnDate = addDays(nextDate, days);
       if (p.clubId === state.userClubId) {
-        stoppedReason = `【緊急速報】${p.name}が練習中に負傷しました。(全治約${days}日)`;
+        p.squadStatus = 'OUT_OF_SQUAD';
+        stoppedReason = `【緊急速報】${p.name}が練習中に負傷しました。(全治約${days}日・ベンチ外へ移動)`;
         injuryNews = {
           id: `news_inj_${Date.now()}`,
           date: nextDate,
           headline: `【負傷者情報】${state.clubs[state.userClubId]?.name}の${p.name}が練習中に負傷離脱`,
-          body: `チームに痛手。${p.name}が本日のトレーニング中に負傷。メディカルスタッフの初期診断によると全治約${days}日の見込み。`,
+          body: `チームに痛手。${p.name}が本日のトレーニング中に負傷。メディカルスタッフの初期診断によると全治約${days}日の見込み。試合出場不可のためベンチ外へ移動しました。`,
           category: 'injury',
           relatedClubId: state.userClubId,
           relatedPlayerId: p.id,
@@ -141,9 +146,133 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
     }
   });
 
+  // 1.5. Daily Loan Expiration Check (Requirement 5 & 8)
+  const userClubId = state.userClubId;
+  const loanReturnNews: NewsItem[] = [];
+  Object.values(updatedPlayers).forEach(p => {
+    if (p.isLoaned && p.loanEndDate && p.loanEndDate <= nextDate) {
+      const parentClubId = p.loanFromClubId || p.parentClubId;
+      const loanClubId = p.clubId;
+      const parentClub = parentClubId ? state.clubs[parentClubId] : null;
+      const loanClub = state.clubs[loanClubId];
+
+      if (parentClub && loanClub) {
+        // Remove from loan club
+        loanClub.playerIds = loanClub.playerIds.filter(id => id !== p.id);
+        // Add to parent club if not already present
+        if (!parentClub.playerIds.includes(p.id)) {
+          parentClub.playerIds.push(p.id);
+        }
+
+        // Update player
+        p.clubId = parentClub.id;
+        p.isLoaned = false;
+        p.loanFromClubId = undefined;
+        p.loanEndDate = undefined;
+        p.loanOptionBuyFee = undefined;
+        p.squadStatus = 'OUT_OF_SQUAD';
+
+        // Add to history
+        if (!state.transferHistory) state.transferHistory = [];
+        state.transferHistory.unshift({
+          id: `tr_loan_return_${Date.now()}_${p.id}`,
+          date: nextDate,
+          playerId: p.id,
+          playerName: p.name,
+          sellerClubId: loanClub.id,
+          buyerClubId: parentClub.id,
+          fee: 0,
+          type: 'loan'
+        });
+
+        const headline = `【レンタル復帰】${p.name}が期限付き移籍期間満了に伴い${parentClub.name}へ復帰`;
+        loanReturnNews.push({
+          id: `news_loan_ret_${Date.now()}_${p.id}`,
+          date: nextDate,
+          headline,
+          body: `期限付き移籍期間の終了。${p.name}が${loanClub.name}でのレンタル期間を満了し、所属元の${parentClub.name}へ復帰しました。`,
+          category: 'transfer',
+          relatedClubId: parentClub.id,
+          relatedPlayerId: p.id,
+          importance: 'high'
+        });
+
+        if (loanClubId === userClubId || parentClubId === userClubId) {
+          stoppedReason = `【レンタル移籍終了】${p.name}の期限付き移籍期間が満了し、${parentClub.name}への復帰手続きが完了しました。`;
+        }
+      }
+    }
+  });
+
   state.players = updatedPlayers;
+  if (loanReturnNews.length > 0) {
+    state.news = [...loanReturnNews, ...state.news];
+  }
   if (injuryNews) {
     state.news = [injuryNews, ...state.news];
+  }
+
+  // 1.8. Rare Budget & Financial Events (Requirement 36)
+  if (userClubId && state.clubs[userClubId] && Math.random() < 0.012) {
+    const club = state.clubs[userClubId];
+    const isPositive = Math.random() < 0.65;
+    if (isPositive) {
+      const bonus = club.tier === 'Elite' ? 12000000 : club.tier === 'Upper' ? 6000000 : 2500000;
+      club.transferBudget += bonus;
+      const finNews: NewsItem = {
+        id: `news_fin_pos_${Date.now()}`,
+        date: nextDate,
+        headline: `【クラブ財政】グローバルスポンサー契約更新および特別ボーナス (€${(bonus / 1000000).toFixed(1)}M) 獲得！`,
+        body: `好調なクラブ運営の成果。商業パートナーシップの新規契約締結により、移籍予算に€${(bonus / 1000000).toFixed(1)}Mが追加拠出されました。`,
+        category: 'press',
+        relatedClubId: userClubId,
+        importance: 'medium'
+      };
+      state.news = [finNews, ...state.news];
+    } else {
+      const cost = club.tier === 'Elite' ? 2500000 : club.tier === 'Upper' ? 1200000 : 600000;
+      club.transferBudget = Math.max(500000, club.transferBudget - cost);
+      const finNews: NewsItem = {
+        id: `news_fin_neg_${Date.now()}`,
+        date: nextDate,
+        headline: `【クラブ運営】スタジアム設備緊急メンテナンスおよび諸経費 (€${(cost / 1000000).toFixed(1)}M) 拠出`,
+        body: `安全基準への適合およびトレーニング環境改善のため、理事会承認のもと設備修繕費を支出しました。`,
+        category: 'press',
+        relatedClubId: userClubId,
+        importance: 'low'
+      };
+      state.news = [finNews, ...state.news];
+    }
+  }
+
+  // 1.9. End of Season Revenue & UCL Qualification (Requirement 31, 32, 37)
+  if (nextDate === '2027-05-25' && userClubId && state.clubs[userClubId]) {
+    const club = state.clubs[userClubId];
+    const endSeasonPayout = club.tier === 'Elite' ? 35000000 : club.tier === 'Upper' ? 18000000 : 8000000;
+    club.transferBudget += endSeasonPayout;
+
+    // Determine Year 2 European Qualifiers based on standings
+    const qualifiedClubIds: string[] = [];
+    (['premier-league', 'laliga', 'bundesliga', 'serie-a', 'ligue-1'] as LeagueKey[]).forEach(lKey => {
+      const st = state.standings[lKey];
+      if (st && st.length >= 4) {
+        qualifiedClubIds.push(...st.slice(0, 4).map(r => r.clubId));
+      }
+    });
+    state.year2UCLQualifiedClubIds = qualifiedClubIds;
+
+    const isUCLQualified = qualifiedClubIds.includes(userClubId);
+    const endSeasonNews: NewsItem = {
+      id: `news_end_season_${Date.now()}`,
+      date: nextDate,
+      headline: `【シーズン総括】大会賞金および年間放映権・グッズ分配金 €${(endSeasonPayout / 1000000).toFixed(1)}M 受領！`,
+      body: `2026/27シーズン終了に伴い、年間収益がクラブ財政へ反映されました。${isUCLQualified ? '来季2年目のUEFAチャンピオンズリーグ出場権を獲得！' : '来季へ向けて新たな戦力補強が計画されています。'}`,
+      category: 'tournament',
+      relatedClubId: userClubId,
+      importance: 'high'
+    };
+    state.news = [endSeasonNews, ...state.news];
+    stoppedReason = `【シーズン終了報告】年間収支決算（€${(endSeasonPayout / 1000000).toFixed(1)}M獲得）が完了しました！`;
   }
 
   // 2. Pre-Season Deadline check (July 15)
@@ -153,6 +282,7 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
 
   // 3. Transfer window deadline day check
   if (nextDate === '2026-08-31' || nextDate === '2026-01-31') {
+    state.showDeadlineSummary = true;
     stoppedReason = '【移籍市場最終日】夏の移籍ウィンドウのデッドラインデイを迎えました！各クラブの駆け込み補強がピークに達しています。';
   }
 
@@ -198,9 +328,53 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
     }
   });
 
+  // 6. Game World State Integrity Check (Requirement 43)
+  const validation = validateGameWorldState(state);
+  if (!validation.isValid && validation.issues.length > 0) {
+    console.warn('Game world auto-corrected issues:', validation.issues);
+  }
+
   return {
     updatedState: state,
     stoppedReason
+  };
+}
+
+// Requirement 43: Validate game world integrity daily
+export function validateGameWorldState(state: GameWorldState): { isValid: boolean; issues: string[] } {
+  const issues: string[] = [];
+  const playerClubMap = new Map<string, string>();
+
+  // Check unique club ownership
+  Object.values(state.clubs).forEach(club => {
+    // Budget check
+    if (club.transferBudget < 0) {
+      issues.push(`Club ${club.name} had negative budget €${club.transferBudget}. Corrected to 0.`);
+      club.transferBudget = 0;
+    }
+
+    club.playerIds.forEach(pId => {
+      if (playerClubMap.has(pId)) {
+        issues.push(`Player ${pId} was registered in both ${playerClubMap.get(pId)} and ${club.id}. Corrected.`);
+      } else {
+        playerClubMap.set(pId, club.id);
+      }
+    });
+  });
+
+  // Check players consistency with clubs
+  Object.values(state.players).forEach(p => {
+    if (p.clubId && state.clubs[p.clubId]) {
+      const club = state.clubs[p.clubId];
+      if (!club.playerIds.includes(p.id)) {
+        club.playerIds.push(p.id);
+      }
+    }
+  });
+
+  return {
+    isValid: issues.length === 0,
+    issues
   };
 }
 

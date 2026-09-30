@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { GameWorldState } from '../types/game';
 import { formatDateJP } from '../engine/dateEngine';
-import { Calendar, FastForward, Play, ChevronDown, DollarSign, Activity } from 'lucide-react';
+import { useI18n } from '../i18n/LanguageContext';
+import { Calendar, FastForward, Play, ChevronDown, DollarSign, Activity, Globe } from 'lucide-react';
 
 interface Props {
   state: GameWorldState;
@@ -14,6 +15,7 @@ interface Props {
 
 export const HeaderNav: React.FC<Props> = ({ state, onAdvanceDay, onFastForward, onRequestReset, onResetCareer, isSimulating }) => {
   const [showSkipMenu, setShowSkipMenu] = useState(false);
+  const { language, setLanguage, t } = useI18n();
 
   const userClub = state.userClubId ? state.clubs[state.userClubId] : null;
 
@@ -35,7 +37,7 @@ export const HeaderNav: React.FC<Props> = ({ state, onAdvanceDay, onFastForward,
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold text-white tracking-tight truncate">
-                  {userClub?.name || 'フリー監督'}
+                  {userClub?.name || (language === 'en' ? 'Unemployed' : language === 'es' ? 'Sin equipo' : 'フリー監督')}
                 </span>
                 <span className="hidden sm:inline-block text-xs text-slate-400">·</span>
                 <span className="hidden sm:inline-block text-xs text-slate-400 truncate">
@@ -56,21 +58,21 @@ export const HeaderNav: React.FC<Props> = ({ state, onAdvanceDay, onFastForward,
             <div className="hidden lg:flex items-center gap-5 text-xs text-slate-300">
               <div className="flex items-center gap-1.5">
                 <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                <span>移籍予算:</span>
+                <span>{t.transferBudget}:</span>
                 <span className="font-bold text-white font-mono">
                   €{(userClub.transferBudget / 1000000).toFixed(1)}M
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Activity className="w-3.5 h-3.5 text-blue-400" />
-                <span>理事会信頼:</span>
+                <span>{t.boardConfidence}:</span>
                 <span className="font-bold text-emerald-400 font-mono">
                   {state.boardConfidence}%
                 </span>
               </div>
               {state.isTransferWindowOpen && (
                 <div className="text-[11px] text-amber-300 font-mono">
-                  移籍締切まで {state.transferWindowClosingDays}日
+                  {t.transferDeadlineDays} {state.transferWindowClosingDays}日
                 </div>
               )}
             </div>
@@ -86,7 +88,7 @@ export const HeaderNav: React.FC<Props> = ({ state, onAdvanceDay, onFastForward,
               className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-bold text-xs sm:text-sm transition-all shadow-md shadow-emerald-500/10 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>次の日へ</span>
+              <span>{t.nextDay}</span>
             </button>
 
             {/* Fast Forward Menu Toggle */}

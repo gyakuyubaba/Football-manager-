@@ -13,7 +13,7 @@ import { INITIAL_YOUTH_ACADEMY } from '../data/initialData';
 import { buildCompletePlayersRegistry, populateClubsWithDefaultSquads, getDefaultTacticsForClub } from '../data/squadPopulator';
 import { getDaysUntilDeadline } from './dateEngine';
 
-export const SAVE_KEY = 'fm26_career_save_v2_real';
+export const SAVE_KEY = 'fm26_career_save_v3_europe';
 
 export function createInitialStandings(clubs: Record<string, Club>): Record<LeagueKey, StandingsRow[]> {
   const standings: Record<LeagueKey, StandingsRow[]> = {
@@ -21,8 +21,7 @@ export function createInitialStandings(clubs: Record<string, Club>): Record<Leag
     'laliga': [],
     'bundesliga': [],
     'serie-a': [],
-    'ligue-1': [],
-    'j1-league': []
+    'ligue-1': []
   };
 
   Object.values(clubs).forEach(club => {
@@ -175,8 +174,8 @@ export function createNewGameWorld(manager: ManagerProfile): GameWorldState {
   const welcomeNews: NewsItem = {
     id: 'news_welcome_1',
     date: initialDate,
-    headline: `【2026/27シーズン開幕】世界6大リーグ（全116クラブ）と移籍市場が始動！`,
-    body: `新シーズンが本格的にスタート。J1リーグ、プレミアリーグ、ラ・リーガ、ブンデスリーガ、セリエA、リーグ・アンの全116クラブが実名選手とともに登録完了。夏の移籍ウィンドウが解禁され、国内外の移籍交渉が本格化しています。`,
+    headline: `【2026/27シーズン開幕】2025/26基準の欧州主要5大リーグ（全96クラブ）始動！`,
+    body: `2026/27監督キャリアが正式スタート。2025/26シーズン終了時点の最新基礎データを基準に、プレミアリーグ、ラ・リーガ、ブンデスリーガ、セリエA、リーグ・アンの全96クラブ・実名選手が完全集結。夏の移籍市場、プレシーズン国際ツアーが開幕しました。`,
     category: 'tournament',
     importance: 'high'
   };
@@ -209,11 +208,10 @@ export function createNewGameWorld(manager: ManagerProfile): GameWorldState {
 
 // -------------------------------------------------------------
 // 【1. 最初の5クラブからのオファーを完全ランダム化】
-// Dynamically randomized 5 initial offers with balanced distribution:
-// - 1 J1 League club
+// Dynamically randomized 5 initial offers with balanced distribution across European tiers:
 // - 1 Lower Tier club (relegation fight / survival)
 // - 2 Mid Tier clubs (different leagues)
-// - 1 Upper / Elite Tier club (reputable ambition)
+// - 2 Upper / Elite Tier clubs (reputable ambition)
 // -------------------------------------------------------------
 export function getInitialClubOffers(allClubs: Record<string, Club>, manager?: ManagerProfile): Club[] {
   const clubList = Object.values(allClubs);
@@ -229,14 +227,12 @@ export function getInitialClubOffers(allClubs: Record<string, Club>, manager?: M
     return copy;
   };
 
-  // 1. J1 League clubs
-  const j1Clubs = shuffle(clubList.filter(c => c.league === 'j1-league'));
-  // 2. Lower Tier clubs (survival battles)
-  const lowerClubs = shuffle(clubList.filter(c => c.tier === 'Lower' && c.league !== 'j1-league'));
-  // 3. Mid Tier clubs (ambitious mid-table)
-  const midClubs = shuffle(clubList.filter(c => c.tier === 'Mid' && c.league !== 'j1-league'));
-  // 4. Upper / Elite Tier clubs (title & continental contention)
-  const upperClubs = shuffle(clubList.filter(c => (c.tier === 'Upper' || c.tier === 'Elite') && c.league !== 'j1-league'));
+  // 1. Lower Tier clubs (survival battles)
+  const lowerClubs = shuffle(clubList.filter(c => c.tier === 'Lower'));
+  // 2. Mid Tier clubs (ambitious mid-table)
+  const midClubs = shuffle(clubList.filter(c => c.tier === 'Mid'));
+  // 3. Upper / Elite Tier clubs (title & continental contention)
+  const upperClubs = shuffle(clubList.filter(c => c.tier === 'Upper' || c.tier === 'Elite'));
 
   const picked: Club[] = [];
   const pickedIds = new Set<string>();
@@ -250,29 +246,26 @@ export function getInitialClubOffers(allClubs: Record<string, Club>, manager?: M
     return false;
   };
 
-  // Add 1 J1 Club
-  tryAdd(j1Clubs[0]);
-
   // Add 1 Lower Tier Club
   tryAdd(lowerClubs[0]);
 
   // Add 2 Mid Tier Clubs from different leagues if possible
   for (const mc of midClubs) {
-    if (picked.length >= 4) break;
-    // Prefer diverse leagues
+    if (picked.length >= 3) break;
     const existingLeagues = picked.map(p => p.league);
     if (!existingLeagues.includes(mc.league) || midClubs.length <= 2) {
       tryAdd(mc);
     }
   }
-  // Fill mid if still needed
-  for (const mc of midClubs) {
-    if (picked.length >= 4) break;
-    tryAdd(mc);
-  }
 
-  // Add 1 Upper/Elite Club
-  tryAdd(upperClubs[0]);
+  // Add 2 Upper/Elite Clubs
+  for (const uc of upperClubs) {
+    if (picked.length >= 5) break;
+    const existingLeagues = picked.map(p => p.league);
+    if (!existingLeagues.includes(uc.league) || upperClubs.length <= 2) {
+      tryAdd(uc);
+    }
+  }
 
   // Fallback if somehow still under 5: fill from any remaining shuffled clubs
   if (picked.length < 5) {
@@ -330,8 +323,8 @@ export function validateInitialWorldState(state: GameWorldState): { valid: boole
   const errors: string[] = [];
 
   const clubCount = Object.keys(state.clubs || {}).length;
-  if (clubCount < 116) {
-    errors.push(`クラブ数が不足しています (現在: ${clubCount}/116)`);
+  if (clubCount < 96) {
+    errors.push(`欧州クラブ数が不足しています (現在: ${clubCount}/96)`);
   }
 
   const playerCount = Object.keys(state.players || {}).length;
@@ -343,7 +336,7 @@ export function validateInitialWorldState(state: GameWorldState): { valid: boole
     errors.push(`開始日付が正しくありません (現在: ${state.currentDate})`);
   }
 
-  const leagues: LeagueKey[] = ['premier-league', 'laliga', 'bundesliga', 'serie-a', 'ligue-1', 'j1-league'];
+  const leagues: LeagueKey[] = ['premier-league', 'laliga', 'bundesliga', 'serie-a', 'ligue-1'];
   leagues.forEach(l => {
     if (!state.standings[l] || state.standings[l].length === 0) {
       errors.push(`リーグ順位表が存在しません (${l})`);
@@ -353,6 +346,73 @@ export function validateInitialWorldState(state: GameWorldState): { valid: boole
   return {
     valid: errors.length === 0,
     errors
+  };
+}
+
+// -------------------------------------------------------------
+// 【21. 自動整合性チェック (Runtime Data Integrity Guardian)】
+// -------------------------------------------------------------
+export function validateGameWorldIntegrity(state: GameWorldState): {
+  isValid: boolean;
+  repairedIssues: string[];
+} {
+  const issues: string[] = [];
+
+  // 1. Verify 1 Player per Club & Strict Unique Affiliation
+  const playerSeenInClubs = new Map<string, string>();
+  Object.values(state.clubs).forEach(club => {
+    const validSquad: string[] = [];
+    (club.playerIds || []).forEach(pId => {
+      const p = state.players[pId];
+      if (!p) return;
+      if (playerSeenInClubs.has(pId)) {
+        issues.push(`重複所属検知: ${p.name} (Club: ${club.name}) - 修正済`);
+      } else {
+        playerSeenInClubs.set(pId, club.id);
+        p.clubId = club.id;
+        validSquad.push(pId);
+      }
+    });
+    club.playerIds = validSquad;
+  });
+
+  // 2. Ensure all players belong to their registered club
+  Object.values(state.players).forEach(p => {
+    if (!p.clubId || !state.clubs[p.clubId]) {
+      const fallbackClub = Object.values(state.clubs)[0];
+      if (fallbackClub) {
+        p.clubId = fallbackClub.id;
+        if (!fallbackClub.playerIds.includes(p.id)) fallbackClub.playerIds.push(p.id);
+        issues.push(`孤立選手所属修復: ${p.name} ➔ ${fallbackClub.name}`);
+      }
+    }
+  });
+
+  // 3. Keep squadStatus in sync with active lineups
+  if (state.userClubId && state.tactics?.lineup) {
+    const starters = state.tactics.lineup.starters || [];
+    const bench = state.tactics.lineup.bench || [];
+    starters.forEach(st => {
+      const p = state.players[st.playerId];
+      if (p) p.squadStatus = 'STARTING';
+    });
+    bench.forEach(pId => {
+      const p = state.players[pId];
+      if (p) p.squadStatus = 'BENCH';
+    });
+    // Set all remaining players to OUT_OF_SQUAD
+    const starterSet = new Set(starters.map(s => s.playerId));
+    const benchSet = new Set(bench);
+    Object.values(state.players).forEach(p => {
+      if (p.clubId === state.userClubId && !starterSet.has(p.id) && !benchSet.has(p.id)) {
+        p.squadStatus = 'OUT_OF_SQUAD';
+      }
+    });
+  }
+
+  return {
+    isValid: issues.length === 0,
+    repairedIssues: issues
   };
 }
 
@@ -435,9 +495,9 @@ export function loadGameState(): GameWorldState | null {
     }
     const state: GameWorldState = JSON.parse(raw);
     
-    // Auto-migrate check: if less than 116 clubs or missing manager, clear
-    if (!state.clubs || Object.keys(state.clubs).length < 116) {
-      console.warn('Legacy incomplete save detected. Resetting to full 116 clubs real database.');
+    // Auto-migrate check: if less than 96 clubs, missing manager, or outdated season
+    if (!state.clubs || Object.keys(state.clubs).length < 96 || state.season !== '2026/27') {
+      console.warn('Legacy save detected. Resetting to 2026/27 European 96 clubs real database.');
       window.localStorage.removeItem(SAVE_KEY);
       return null;
     }

@@ -425,7 +425,7 @@ export const ManagerCareerTab: React.FC<Props> = ({
             <div className="flex items-center gap-2.5 pb-2 border-b border-slate-800">
               <Database className="w-4 h-4 text-emerald-400" />
               <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                ベースデータベース情報 (2026/27 Base Data)
+                ベースデータベース情報 (2025/26 Base Data)
               </h3>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
@@ -441,8 +441,8 @@ export const ManagerCareerTab: React.FC<Props> = ({
               </div>
               <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
                 <span className="text-slate-500 block mb-0.5 text-[11px]">収録リーグ</span>
-                <span className="text-base font-bold text-white">6大リーグ</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">欧州5大 + J1</span>
+                <span className="text-base font-bold text-white">欧州5大リーグ</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">96クラブ完全網羅</span>
               </div>
               <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
                 <span className="text-slate-500 block mb-0.5 text-[11px]">現在ゲーム日付</span>
@@ -462,7 +462,7 @@ export const ManagerCareerTab: React.FC<Props> = ({
             </div>
             
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              現在の監督データ、所属クラブ、シーズン進行、試合結果、移籍履歴、選手成長、怪我・疲労などの<strong>ゲーム内進行データ（GAME DATA）のみを完全に削除</strong>し、最新の2026/27開幕時点へ戻します。
+              現在の監督データ、所属クラブ、シーズン進行、試合結果、移籍履歴、選手成長、怪我・疲労などの<strong>ゲーム内進行データ（GAME DATA）のみを完全に削除</strong>し、最新の2025/26開幕時点へ戻します。
             </p>
 
             <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 space-y-1.5">

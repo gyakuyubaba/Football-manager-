@@ -1,5 +1,6 @@
 import React from 'react';
 import { Home, Shield, DollarSign, CalendarDays, MoreHorizontal } from 'lucide-react';
+import { useI18n } from '../i18n/LanguageContext';
 
 export type MainTab = 'home' | 'tactics' | 'transfers' | 'fixtures' | 'club';
 
@@ -16,12 +17,14 @@ export const BottomTabBar: React.FC<Props> = ({
   unreadNewsCount = 0,
   hasMatchToday = false
 }) => {
-  const tabs = [
-    { id: 'home' as MainTab, label: 'ホーム', icon: Home, badge: unreadNewsCount > 0 ? unreadNewsCount : undefined },
-    { id: 'tactics' as MainTab, label: '戦術・編成', icon: Shield },
-    { id: 'transfers' as MainTab, label: '移籍市場', icon: DollarSign },
-    { id: 'fixtures' as MainTab, label: '試合・日程', icon: CalendarDays, dot: hasMatchToday },
-    { id: 'club' as MainTab, label: 'クラブ・記録', icon: MoreHorizontal }
+  const { t } = useI18n();
+
+  const tabs: { id: MainTab; label: string; icon: React.ComponentType<{ className?: string }>; dot?: boolean; badge?: number }[] = [
+    { id: 'home' as MainTab, label: t.tabHome || 'ホーム', icon: Home },
+    { id: 'tactics' as MainTab, label: t.tabTactics || '戦術・編成', icon: Shield },
+    { id: 'transfers' as MainTab, label: t.tabTransfers || '移籍市場', icon: DollarSign },
+    { id: 'fixtures' as MainTab, label: t.tabFixtures || '試合・日程', icon: CalendarDays, dot: hasMatchToday },
+    { id: 'club' as MainTab, label: t.tabClub || 'クラブ・記録', icon: MoreHorizontal }
   ];
 
   return (

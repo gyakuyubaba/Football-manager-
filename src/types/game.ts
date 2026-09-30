@@ -97,7 +97,7 @@ export interface PlayerInjury {
 export interface PlayerSuspension {
   isSuspended: boolean;
   matchesRemaining: number;
-  reason?: 'レッドカード' | '累積警告';
+  reason?: 'レッドカード' | '累積警告' | string;
 }
 
 export interface Player {
@@ -127,11 +127,21 @@ export interface Player {
   clubId: string;
   squadRole: '絶対的主力' | '重要選手' | 'ローテーション' | '控え・バックアップ' | '若手・育成枠';
 
-  // Loan status
+  // Loan status & Period management
   isLoaned: boolean;
   loanFromClubId?: string;
+  parentClubId?: string;
+  loanClubId?: string;
+  loanStartDate?: string;
+  loanEndDate?: string;
+  loanType?: 'permanent' | 'loan' | 'buy_option' | 'dev_loan';
+  buyOptionFee?: number;
+  developmentLoan?: boolean;
   loanOptionBuyFee?: number;
   loanPlayingTimeGuaranteed?: boolean;
+
+  // Formal Squad Status
+  squadStatus?: 'STARTING' | 'BENCH' | 'OUT_OF_SQUAD';
 
   playstyle: PlayStyle;
   personality: PlayerPersonality;
@@ -140,11 +150,19 @@ export interface Player {
 
   condition: PlayerCondition;
   fatigue: number; // 0 (fresh) - 100 (exhausted)
+  stamina?: number; // 60 - 99 natural stamina
+  inMatchStamina?: number; // 0 - 100 live during match
+  injuryStatus?: 'FIT' | 'INJURED' | 'DOUBTFUL';
+  injuryReturnDate?: string;
   injury: PlayerInjury;
   suspension: PlayerSuspension;
 
   stats: PlayerStats;
   shirtNumber: number;
+  isTransferListed?: boolean;
+  isLoanListed?: boolean;
+  accumulatedYellowCards?: Record<string, number>; // competition -> count
+  accumulatedRedCards?: Record<string, number>;
 }
 
 export type LeagueKey = 
@@ -152,8 +170,7 @@ export type LeagueKey =
   | 'laliga'
   | 'bundesliga'
   | 'serie-a'
-  | 'ligue-1'
-  | 'j1-league';
+  | 'ligue-1';
 
 export type CupKey = 
   | 'ucl'
@@ -165,8 +182,6 @@ export type CupKey =
   | 'dfb-pokal'
   | 'coppa-italia'
   | 'coupe-de-france'
-  | 'emperor-cup'
-  | 'levain-cup'
   | 'super-cup';
 
 export interface Club {
@@ -180,7 +195,7 @@ export interface Club {
   transferBudget: number; // €
   wageBudget: number; // € / week
   currentWageSpend: number; // € / week
-  target: 'リーグ優勝' | 'チャンピオンズリーグ出場圏' | '欧州大会圏内' | '上位進出' | '中位安定' | 'J1残留' | 'カップ戦タイトル';
+  target: 'リーグ優勝' | 'チャンピオンズリーグ出場圏' | '欧州大会圏内' | '上位進出' | '中位安定' | 'リーグ残留' | 'カップ戦タイトル';
   fanExpectation: '極めて高い（タイトル必須）' | '高い（上位争い）' | '現実的（堅実な戦い）' | '残留最優先';
   stadiumName: string;
   stadiumCapacity: number;
@@ -188,24 +203,34 @@ export interface Club {
   secondaryColor: string;
   currentFormation: FormationName;
   playerIds: string[];
+  rivalClubIds?: string[];
   isUserClub?: boolean;
 }
 
 export type FormationName = 
   | '4-3-3'
+  | '4-3-3 Holding'
+  | '4-3-3 Defensive'
+  | '4-3-3 Attacking'
   | '4-2-3-1'
-  | '4-4-2'
-  | '4-1-4-1'
-  | '4-4-1-1'
   | '4-2-2-2'
+  | '4-4-2'
+  | '4-4-1-1'
+  | '4-1-4-1'
+  | '4-1-2-3'
+  | '4-3-1-2'
+  | '4-3-2-1'
+  | '4-2-4'
   | '3-5-2'
   | '3-4-3'
   | '3-4-2-1'
   | '3-4-1-2'
   | '3-1-4-2'
+  | '3-2-4-1'
   | '5-3-2'
   | '5-4-1'
-  | '4-3-1-2';
+  | '5-2-3'
+  | '5-3-1-1';
 
 export interface TeamTactics {
   formation: FormationName;
@@ -232,7 +257,7 @@ export interface TeamTactics {
 
 export interface MatchEvent {
   minute: number;
-  type: 'goal' | 'assist' | 'yellow_card' | 'red_card' | 'injury' | 'sub' | 'big_chance' | 'save' | 'penalty' | 'var';
+  type: 'goal' | 'assist' | 'yellow_card' | 'second_yellow' | 'red_card' | 'injury' | 'sub' | 'big_chance' | 'save' | 'penalty' | 'var' | 'woodwork';
   clubId: string;
   playerId: string;
   playerName: string;
@@ -271,6 +296,8 @@ export interface MatchFixture {
   stats?: MatchStats;
   motmPlayerId?: string;
   isUserMatch: boolean;
+  extraTimePlayed?: boolean;
+  penaltyShootout?: { homeScore: number; awayScore: number };
 }
 
 export interface StandingsRow {
@@ -294,7 +321,9 @@ export interface TransferNegotiation {
   buyerClubId: string;
   status: 'club_negotiating' | 'club_agreed' | 'player_negotiating' | 'completed' | 'collapsed';
   isLoan: boolean;
+  negotiationType?: 'permanent' | 'loan' | 'buy_option' | 'dev_loan';
   buyOptionFee?: number;
+  cooldownUntil?: string; // 10-day renegotiation ban date after collapse
   
   // Club Stage
   initialAskingPrice: number;
@@ -310,6 +339,38 @@ export interface TransferNegotiation {
   signingBonusOffered: number;
   playerPatience: number;
   playerMessages: { sender: 'agent' | 'user'; text: string; date: string }[];
+}
+
+export interface IncomingAIOffer {
+  id: string;
+  date: string;
+  buyerClubId: string;
+  playerId: string;
+  type: 'permanent' | 'loan' | 'buy_option' | 'dev_loan';
+  fee: number;
+  bonusFee?: number;
+  bonusCondition?: string;
+  installments?: number;
+  sellOnPercentage?: number;
+  buybackClause?: boolean;
+  wageContribution: number;
+  loanDurationMonths?: number;
+  buyOptionFee?: number;
+  status: 'pending' | 'accepted' | 'rejected' | 'negotiating';
+  negotiationRounds?: number;
+  aiPatience?: number;
+  dialogueHistory?: { speaker: 'ai' | 'user'; message: string; termsSummary?: string }[];
+}
+
+export interface CompletedTransferRecord {
+  id: string;
+  date: string;
+  playerId: string;
+  playerName: string;
+  sellerClubId: string;
+  buyerClubId: string;
+  fee: number;
+  type: 'permanent' | 'loan' | 'buy_option' | 'dev_loan';
 }
 
 export interface NewsItem {
@@ -367,7 +428,7 @@ export interface PreSeasonTournament {
 
 export interface GameWorldState {
   currentDate: string; // ISO string e.g. "2026-07-01"
-  season: string; // "2026/27"
+  season: string; // "2026/27" (with 2025/26 database)
   isTransferWindowOpen: boolean;
   transferWindowClosingDays: number;
   manager: ManagerProfile;
@@ -389,4 +450,8 @@ export interface GameWorldState {
 
   selectedPreSeason?: string;
   trainingFocus: 'バランス総合' | '攻撃・連係強化' | '守備戦術・プレス' | 'コンディション回復' | '若手重点育成';
+  incomingOffers?: IncomingAIOffer[];
+  transferHistory?: CompletedTransferRecord[];
+  showDeadlineSummary?: boolean;
+  year2UCLQualifiedClubIds?: string[];
 }

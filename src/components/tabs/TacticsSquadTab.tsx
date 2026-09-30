@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { GameWorldState, TeamTactics, FormationName, Player, Position } from '../../types/game';
-import { Shield, Users, Activity, Shuffle, Sliders, AlertCircle } from 'lucide-react';
+import { GameWorldState, TeamTactics, FormationName, Player, Position, NewsItem } from '../../types/game';
+import { Shield, Users, Activity, Shuffle, Sliders, AlertCircle, AlertTriangle } from 'lucide-react';
 
 interface Props {
   state: GameWorldState;
   onUpdateTactics: (tactics: TeamTactics) => void;
   onSelectPlayer: (player: Player) => void;
+  onUpdateState?: (newState: GameWorldState) => void;
 }
 
 const FORMATIONS: FormationName[] = [
@@ -21,28 +22,80 @@ const FORMATIONS: FormationName[] = [
   '4-3-1-2'
 ];
 
-export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSelectPlayer }) => {
+export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSelectPlayer, onUpdateState }) => {
   const [selectedStarterId, setSelectedStarterId] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'lineup' | 'instructions' | 'roles'>('lineup');
+  const [benchLimitError, setBenchLimitError] = useState<string | null>(null);
 
   const userClub = state.userClubId ? state.clubs[state.userClubId] : null;
   const tactics = state.tactics;
 
-  // Swap starter with bench player
-  const handleSwap = (benchPlayerId: string) => {
+  // Media reaction when a key/star player is unexpectedly excluded to OUT_OF_SQUAD (Requirement 10)
+  const triggerStarPlayerBenchOutSpeculation = (p: Player) => {
+    if (!p || p.ovr < 80 || p.injury?.isInjured || p.injuryStatus === 'INJURED' || p.suspension?.isSuspended) {
+      return;
+    }
+    const headlines = [
+      `【現地報道】${p.name}、まさかのベンチ外。移籍を希望しているのではないかとの憶測も`,
+      `【戦術の波紋】主力${p.name}がメンバー外。監督との関係に注目集まる`
+    ];
+    const bodies = [
+      `本日のチーム発表で主力選手である${p.name}がベンチ外となったことが判明。負傷や累積警告などの公式発表がない中でのメンバー外宣告に対し、現地メディアやファンコミュニティでは「今夏の移籍を希望しているのではないか」「監督との関係悪化の可能性も」など様々な憶測が飛び交っています。`,
+      `看板選手の${p.name}が登録外に。現地記者は「首脳陣との戦術的対立や関係悪化によるものの可能性がある。今後の起用法次第では退団報道が過熱するだろう」と報じています。`
+    ];
+    const chosenIdx = Math.floor(Math.random() * headlines.length);
+    const speculationNews: NewsItem = {
+      id: `news_speculation_${Date.now()}_${p.id}`,
+      date: state.currentDate,
+      headline: headlines[chosenIdx],
+      body: bodies[chosenIdx],
+      category: 'press',
+      relatedClubId: state.userClubId || undefined,
+      relatedPlayerId: p.id,
+      importance: 'high'
+    };
+    if (onUpdateState) {
+      onUpdateState({
+        ...state,
+        news: [speculationNews, ...state.news]
+      });
+    }
+  };
+
+  // Swap starter with bench or out-of-squad player
+  const handleSwap = (targetPlayerId: string) => {
     if (!selectedStarterId) return;
+    setBenchLimitError(null);
 
     const newStarters = tactics.lineup.starters.map(s => {
       if (s.playerId === selectedStarterId) {
-        return { ...s, playerId: benchPlayerId };
+        return { ...s, playerId: targetPlayerId };
       }
       return s;
     });
 
-    const newBench = tactics.lineup.bench.map(id => {
-      if (id === benchPlayerId) return selectedStarterId;
+    let newBench = tactics.lineup.bench.map(id => {
+      if (id === targetPlayerId) return selectedStarterId;
       return id;
     });
+
+    // If target was in reserves (out of squad), add previous starter to bench or out of squad
+    if (!tactics.lineup.bench.includes(targetPlayerId)) {
+      if (newBench.length < 9) {
+        newBench.push(selectedStarterId);
+      }
+    }
+
+    // Update squadStatus on players
+    const updatedPlayers = { ...state.players };
+    if (updatedPlayers[targetPlayerId]) updatedPlayers[targetPlayerId].squadStatus = 'STARTING';
+    if (updatedPlayers[selectedStarterId]) {
+      const willBeOutOfSquad = !newBench.includes(selectedStarterId);
+      updatedPlayers[selectedStarterId].squadStatus = willBeOutOfSquad ? 'OUT_OF_SQUAD' : 'BENCH';
+      if (willBeOutOfSquad) {
+        triggerStarPlayerBenchOutSpeculation(updatedPlayers[selectedStarterId]);
+      }
+    }
 
     onUpdateTactics({
       ...tactics,
@@ -54,6 +107,47 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
     });
 
     setSelectedStarterId(null);
+  };
+
+  // Move player from out-of-squad to bench (Strict 9-player maximum check: Requirement 11)
+  const handlePromoteToBench = (playerId: string) => {
+    let newBench = [...tactics.lineup.bench];
+    if (newBench.length >= 9) {
+      setBenchLimitError('ベンチには最大9人まで登録できます。');
+      return;
+    }
+    setBenchLimitError(null);
+    newBench.push(playerId);
+    if (state.players[playerId]) {
+      state.players[playerId].squadStatus = 'BENCH';
+    }
+
+    onUpdateTactics({
+      ...tactics,
+      lineup: {
+        ...tactics.lineup,
+        bench: newBench
+      }
+    });
+  };
+
+  // Demote player from bench to out-of-squad (Requirement 10 & 12)
+  const handleDemoteToOutOfSquad = (playerId: string) => {
+    setBenchLimitError(null);
+    const newBench = tactics.lineup.bench.filter(id => id !== playerId);
+    const demoted = state.players[playerId];
+    if (demoted) {
+      demoted.squadStatus = 'OUT_OF_SQUAD';
+      triggerStarPlayerBenchOutSpeculation(demoted);
+    }
+
+    onUpdateTactics({
+      ...tactics,
+      lineup: {
+        ...tactics.lineup,
+        bench: newBench
+      }
+    });
   };
 
   const handleFormationChange = (formation: FormationName) => {
@@ -330,12 +424,24 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
               </div>
             </div>
 
-            {/* Bench Table */}
+            {/* Bench Table (Strict 9-player maximum: Requirement 11) */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl">
+              {benchLimitError && (
+                <div className="mb-3 p-3 bg-red-950/80 border border-red-500 rounded-2xl flex items-center justify-between text-xs text-red-200 animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                    <span className="font-bold">{benchLimitError}</span>
+                  </div>
+                  <button type="button" onClick={() => setBenchLimitError(null)} className="text-red-400 hover:text-white text-xs font-bold cursor-pointer">
+                    ✕
+                  </button>
+                </div>
+              )}
+
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
                 <div>
                   <span className="text-xs font-bold text-white uppercase tracking-wider">
-                    ベンチメンバー (Substitutes)
+                    ベンチメンバー (最大9人 / 現在 {benchPlayers.length}名)
                   </span>
                   {selectedStarterId && (
                     <span className="ml-2 text-[11px] text-yellow-400 font-semibold">
@@ -343,7 +449,9 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                     </span>
                   )}
                 </div>
-                <span className="text-xs text-slate-400 font-mono">{benchPlayers.length}名</span>
+                <span className={`text-xs font-mono font-bold ${benchPlayers.length >= 9 ? 'text-amber-400' : 'text-slate-400'}`}>
+                  {benchPlayers.length}/9名
+                </span>
               </div>
 
               <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
@@ -372,21 +480,134 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       {renderConditionDot(p.condition)}
                       <span className="text-xs font-mono font-bold text-white">{p.ovr}</span>
-                      {selectedStarterId && (
+                      {selectedStarterId ? (
                         <button
                           type="button"
                           className="px-2 py-1 rounded bg-emerald-500 text-slate-950 text-[10px] font-bold"
                         >
                           交代
                         </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleDemoteToOutOfSquad(p.id); }}
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-red-300 text-[10px] border border-slate-700"
+                          title="ベンチ外へ移動"
+                        >
+                          外す
+                        </button>
                       )}
                     </div>
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Bench-Out (OUT_OF_SQUAD / 登録外・リザーブ) (Requirements 6, 7, 8) */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl">
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+                <div>
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    ベンチ外メンバー (Out of Squad / Reserves)
+                  </span>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    ※移籍加入選手・負傷者・疲労休養・若手育成枠。試合には直接出場できません。
+                  </p>
+                </div>
+                <span className="text-xs text-slate-400 font-mono">{reservePlayers.length}名</span>
+              </div>
+
+              {reservePlayers.length === 0 ? (
+                <div className="text-center py-4 text-xs text-slate-500">
+                  現在ベンチ外の選手はいません。全選手がスタメンまたはベンチに登録されています。
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                  {reservePlayers.map(p => {
+                    const isInjured = p.injury?.isInjured || p.injuryStatus === 'INJURED';
+                    const isFatigued = p.fatigue > 45;
+                    const isSuspended = p.suspension?.isSuspended;
+
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => {
+                          if (selectedStarterId && !isInjured && !isSuspended) {
+                            handleSwap(p.id);
+                          } else {
+                            onSelectPlayer(p);
+                          }
+                        }}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                          selectedStarterId && !isInjured && !isSuspended
+                            ? 'border-yellow-500/50 hover:bg-yellow-950/20'
+                            : 'border-slate-800/80 bg-slate-950/40 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-5 text-slate-600 font-mono text-[11px]">#{p.shirtNumber}</span>
+                          <span className="w-8 font-semibold text-slate-400 font-mono text-xs">{p.position}</span>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-slate-200 truncate">{p.name}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {isInjured && (
+                                <span className="px-1.5 py-0.2 rounded bg-red-950 text-red-400 text-[9px] font-bold border border-red-800">
+                                  負傷 (全治{p.injury?.recoveryDays || 7}日)
+                                </span>
+                              )}
+                              {isFatigued && (
+                                <span className="px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 text-[9px] font-bold border border-amber-800">
+                                  疲労高 ({p.fatigue}%)
+                                </span>
+                              )}
+                              {isSuspended && (
+                                <span className="px-1.5 py-0.2 rounded bg-purple-950 text-purple-400 text-[9px] font-bold border border-purple-800">
+                                  出場停止
+                                </span>
+                              )}
+                              {!isInjured && !isFatigued && !isSuspended && (
+                                <span className="text-[10px] text-slate-500">
+                                  {p.age <= 21 ? '若手育成' : '戦術待機'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {renderConditionDot(p.condition)}
+                          <span className="text-xs font-mono font-bold text-slate-300">{p.ovr}</span>
+                          
+                          {selectedStarterId ? (
+                            <button
+                              type="button"
+                              disabled={isInjured || isSuspended}
+                              className={`px-2 py-1 rounded text-[10px] font-bold ${
+                                isInjured || isSuspended 
+                                  ? 'bg-slate-800 text-slate-600 cursor-not-allowed' 
+                                  : 'bg-emerald-500 text-slate-950'
+                              }`}
+                            >
+                              スタメンへ
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handlePromoteToBench(p.id); }}
+                              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 text-[10px] border border-slate-700 font-semibold"
+                            >
+                              ベンチへ
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
           </div>

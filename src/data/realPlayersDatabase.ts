@@ -47,12 +47,13 @@ export function makeRealPlayer(
   const defending = Math.min(99, Math.max(25, isDef ? ovr + 2 : position === 'CDM' ? ovr : isMid ? ovr - 12 : 35));
   const physical = Math.min(99, Math.max(45, isDef || position === 'ST' ? ovr : ovr - 3));
   const gk = isGk ? ovr : 12;
+  const stamina = Math.min(98, Math.max(68, isMid ? ovr + 3 : isDef ? ovr : ovr - 2) - (age >= 33 ? (age - 32) * 2 : 0));
 
   return {
     id,
     name,
     age,
-    birthDate: `${2026 - age}-05-15`,
+    birthDate: `${2025 - age}-05-15`,
     nationality,
     position,
     altPositions: resolvedAltPositions,
@@ -66,9 +67,11 @@ export function makeRealPlayer(
     defending,
     physical,
     gk,
+    stamina,
+    inMatchStamina: stamina,
     marketValue,
     wage,
-    contractYears: Math.max(1, Math.min(5, 2029 - (2026 - (id.length % 3)))),
+    contractYears: Math.max(1, Math.min(5, 2028 - (2025 - (id.length % 3)))),
     clubId,
     squadRole: ovr >= 85 ? '絶対的主力' : ovr >= 78 ? '重要選手' : ovr >= 73 ? 'ローテーション' : '控え・バックアップ',
     isLoaned: false,
@@ -77,10 +80,14 @@ export function makeRealPlayer(
     managerTrust: 85,
     relationships: [],
     condition,
-    fatigue: 5 + (shirtNumber % 15),
+    fatigue: 5 + (shirtNumber % 12),
     injury: { isInjured: false },
     suspension: { isSuspended: false, matchesRemaining: 0 },
     stats: { appearances: 0, starts: 0, minutes: 0, goals: 0, assists: 0, cleanSheets: 0, yellowCards: 0, redCards: 0, avgRating: 0 },
-    shirtNumber
+    shirtNumber,
+    isTransferListed: false,
+    isLoanListed: false,
+    accumulatedYellowCards: {},
+    accumulatedRedCards: {}
   };
 }
