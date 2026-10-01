@@ -101,15 +101,36 @@ export const PlayerDetailModal: React.FC<Props> = ({
           <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
             <span className="text-[10px] text-slate-500 block">健康状態・出場資格</span>
             <div className="text-xs font-bold mt-0.5">
-              {player.injury.isInjured ? (
-                <div className="space-y-0.5">
-                  <span className="text-red-400 font-semibold block">{player.injury.type} (全治{player.injury.recoveryDays}日)</span>
-                  <span className="text-[10px] text-slate-400 font-mono block">復帰予定: {player.injury.returnDate || player.injuryReturnDate || '診断中'}</span>
+              {player.injuryStatus === 'INJURED' || player.injury?.isInjured ? (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-red-400 font-black">
+                    <span className="px-1.5 py-0.5 rounded bg-red-950 border border-red-800 text-[10px]">【負傷】</span>
+                    <span>負傷中（{player.injuryType || player.injury?.type || '負傷'}）</span>
+                  </div>
+                  <div className="text-[11px] text-red-300 font-mono">
+                    復帰予定：{player.injuryReturnDate || player.injury?.returnDate || '診断中'}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    あと {player.injuryDaysRemaining || player.injury?.recoveryDays || 0} 日
+                  </div>
                 </div>
-              ) : player.suspension.isSuspended ? (
-                <span className="text-amber-400 font-semibold">停止中 (残{player.suspension.matchesRemaining}試合)</span>
+              ) : player.suspension?.isSuspended ? (
+                <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                  <span className="px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-[10px]">【出場停止】</span>
+                  <span>停止中 (残{player.suspension.matchesRemaining}試合)</span>
+                </div>
               ) : (
-                <span className="text-emerald-400">出場可能</span>
+                <div className="space-y-1">
+                  <span className="text-emerald-400 font-bold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    HEALTHY (出場可能)
+                  </span>
+                  {player.fatigue >= 70 && (
+                    <div className="text-[10px] text-amber-400 font-bold">
+                      【疲労蓄積警告: {player.fatigue}%】負傷リスク上昇中
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>

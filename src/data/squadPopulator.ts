@@ -1,8 +1,10 @@
 import { Player, Position, Club, TeamTactics } from '../types/game';
 import { ALL_116_CLUBS } from './clubsData';
 import { CURATED_REAL_SQUADS } from './squadsCatalog';
-import { ADDITIONAL_CLUB_SEEDS, REAL_FOOTBALL_NAMES_DATABASE } from './allClubsSquads';
+import { ADDITIONAL_CLUB_SEEDS } from './allClubsSquads';
 import { makeRealPlayer } from './realPlayersDatabase';
+import { checkPlayerDataIntegrity } from '../engine/dataValidator';
+import { generateFullJLeaguePlayers } from './jLeagueData';
 
 // Standard 18 squad positions template
 const SQUAD_POSITIONS_TEMPLATE: Position[] = [
@@ -10,109 +12,176 @@ const SQUAD_POSITIONS_TEMPLATE: Position[] = [
   'GK', 'CB', 'CM', 'RM', 'LM', 'ST', 'CF'
 ];
 
+// Authentic European First Names & Surnames for Non-Colliding Depth Squad Players
+const DEPTH_NAMES_BY_COUNTRY: Record<string, { firstNames: string[]; lastNames: string[] }> = {
+  'イングランド': {
+    firstNames: ['George', 'Liam', 'Harry', 'Jack', 'Callum', 'Oliver', 'Noah', 'Leo', 'Arthur', 'Oscar', 'Freddie', 'Alfie', 'Finley', 'Archie', 'Charlie', 'Harvey'],
+    lastNames: ['Pemberton', 'Ellington', 'Holliday', 'Barkworth', 'Cranston', 'Blackwood', 'Whitmore', 'Fairclough', 'Thorold', 'Ainsworth', 'Brabazon', 'Nethercott', 'Colquhoun', 'Stanhope', 'Harpur', 'Goxhill']
+  },
+  'スペイン': {
+    firstNames: ['Hugo', 'Mateo', 'Lucas', 'Martín', 'Daniel', 'Pablo', 'Alejandro', 'Manuel', 'Álvaro', 'Adrián', 'David', 'Mario', 'Diego', 'Marcos', 'Javier'],
+    lastNames: ['Carballeira', 'Villacastín', 'Monasterio', 'Zubeldia', 'Basterretxea', 'Aranguren', 'Bustamante', 'Campomanes', 'Fontcuberta', 'Urrutikoetxea', 'Garmendia', 'Madariaga', 'Santisteban', 'Barrenetxea']
+  },
+  'ドイツ': {
+    firstNames: ['Lukas', 'Finn', 'Jonas', 'Paul', 'Niklas', 'Tim', 'Jan', 'Leon', 'Felix', 'Maximilian', 'Julian', 'Moritz', 'Elias', 'Hannes', 'Tobias'],
+    lastNames: ['Holzbrinck', 'Breitenstein', 'Westermann', 'Lindemann', 'Kaufbeuren', 'Schneidewind', 'Rosenkranz', 'Bärenfänger', 'Tannhäuser', 'Winterfeld', 'Diefenbach', 'Stauffenberg', 'Klingenberg', 'Sonnenschein']
+  },
+  'イタリア': {
+    firstNames: ['Lorenzo', 'Mattia', 'Tommaso', 'Gabriele', 'Edoardo', 'Federico', 'Riccardo', 'Davide', 'Samuele', 'Simone', 'Michele', 'Pietro', 'Filippo'],
+    lastNames: ['Tagliaferri', 'Castelvecchio', 'Montesquieu', 'Barcellona', 'Campanella', 'Bentivoglio', 'Pietralunga', 'Valvassori', 'Bongiovanni', 'Scaramuccia', 'Passalacqua', 'Mazzagatti', 'Quattrocchi']
+  },
+  'フランス': {
+    firstNames: ['Gabriel', 'Raphaël', 'Jules', 'Arthur', 'Louis', 'Maël', 'Lucas', 'Adam', 'Hugo', 'Sacha', 'Gaspard', 'Mathis', 'Nathan', 'Clément'],
+    lastNames: ['Chanteloube', 'Villedieu', 'Rochechouart', 'Montauban', 'Beauchamp', 'Fontenelle', 'Castelbajac', 'Dambreuse', 'Chateaubriand', 'Lescure', 'Grandchamp', 'Puydebat', 'Hautefort', 'Bellerive']
+  }
+};
+
 export function buildCompletePlayersRegistry(): Record<string, Player> {
   const registry: Record<string, Player> = {};
+  const registeredPlayerIds = new Set<string>();
+  const registeredNormalizedNames = new Set<string>();
 
-  // 1. Curated real squads
+  // Helper to add player with strict uniqueness guarantee
+  const addPlayerIfUnique = (p: Player): boolean => {
+    if (!p || !p.id || !p.name) return false;
+
+    // Strict Diogo Jota filter
+    if (p.name.toLowerCase().includes('diogo jota') || p.id.includes('jota')) {
+      return false;
+    }
+
+    const norm = p.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (registeredNormalizedNames.has(norm)) {
+      // Duplicate person detected, skip secondary clone
+      return false;
+    }
+
+    let finalId = p.id;
+    if (registeredPlayerIds.has(finalId)) {
+      finalId = `${p.id}_${Math.floor(Math.random() * 1000)}`;
+    }
+
+    const cleanPlayer: Player = {
+      ...p,
+      id: finalId,
+      currentClubId: p.clubId,
+      squadStatus: p.squadStatus || 'OUT_OF_SQUAD',
+      injuryStatus: p.injuryStatus || (p.injury?.isInjured ? 'INJURED' : 'FIT'),
+      injury: p.injury || { isInjured: false },
+      suspension: p.suspension || { isSuspended: false, matchesRemaining: 0 }
+    };
+
+    registry[finalId] = cleanPlayer;
+    registeredPlayerIds.add(finalId);
+    registeredNormalizedNames.add(norm);
+    return true;
+  };
+
+  // 1. Register Curated authentic squads first (highest priority)
   Object.values(CURATED_REAL_SQUADS).forEach(squad => {
     squad.forEach(p => {
-      registry[p.id] = { ...p };
+      addPlayerIfUnique(p);
     });
   });
 
-  // 2. Additional seeded clubs
+  // 2. Register additional authentic club seeds
   Object.entries(ADDITIONAL_CLUB_SEEDS).forEach(([clubId, seeds]) => {
     seeds.forEach((seed, idx) => {
       const pId = `${clubId}_${idx + 1}_${seed.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}`;
-      if (!registry[pId]) {
-        const tierMultiplier = seed.ovr >= 85 ? 65000000 : seed.ovr >= 80 ? 30000000 : seed.ovr >= 75 ? 12000000 : 2500000;
-        const wageMultiplier = seed.ovr >= 85 ? 200000 : seed.ovr >= 80 ? 100000 : seed.ovr >= 75 ? 40000 : 12000;
-        
-        registry[pId] = makeRealPlayer(
-          pId,
-          seed.name,
-          clubId,
-          seed.position,
-          seed.age,
-          seed.nationality,
-          seed.ovr,
-          seed.ovr + (seed.age <= 22 ? 6 : seed.age <= 26 ? 3 : 0),
-          tierMultiplier,
-          wageMultiplier,
-          seed.shirtNumber,
-          seed.preferredFoot || '右',
-          seed.playstyle || (seed.position === 'GK' ? 'ショットストッパー' : 'チャンスメイカー')
-        );
-      }
+      const tierMultiplier = seed.ovr >= 85 ? 65000000 : seed.ovr >= 80 ? 30000000 : seed.ovr >= 75 ? 12000000 : 2500000;
+      const wageMultiplier = seed.ovr >= 85 ? 200000 : seed.ovr >= 80 ? 100000 : seed.ovr >= 75 ? 40000 : 12000;
+
+      const player = makeRealPlayer(
+        pId,
+        seed.name,
+        clubId,
+        seed.position,
+        seed.age,
+        seed.nationality,
+        seed.ovr,
+        seed.ovr + (seed.age <= 22 ? 6 : seed.age <= 26 ? 3 : 0),
+        tierMultiplier,
+        wageMultiplier,
+        seed.shirtNumber,
+        seed.preferredFoot || '右',
+        seed.playstyle || (seed.position === 'GK' ? 'ショットストッパー' : 'チャンスメイカー')
+      );
+
+      addPlayerIfUnique(player);
     });
   });
 
-  // 3. Ensure every one of the 116 clubs has at least 18 fully named REAL players
-  let nameIndex = 0;
-  ALL_116_CLUBS.forEach(club => {
-    // Find players already registered for this club
+  // 3. Ensure all 96 European clubs have at least 18 fully structured players without reusing real star names
+  ALL_116_CLUBS.forEach((club, clubIdx) => {
     const existing = Object.values(registry).filter(p => p.clubId === club.id);
     const needed = Math.max(0, 18 - existing.length);
 
     if (needed > 0) {
-      const countryData = REAL_FOOTBALL_NAMES_DATABASE[club.country] || REAL_FOOTBALL_NAMES_DATABASE['イングランド'];
-      const tierBaseOvr = club.tier === 'Elite' ? 83 : club.tier === 'Upper' ? 78 : club.tier === 'Mid' ? 74 : 70;
+      const depthData = DEPTH_NAMES_BY_COUNTRY[club.country] || DEPTH_NAMES_BY_COUNTRY['イングランド'];
+      const tierBaseOvr = club.tier === 'Elite' ? 82 : club.tier === 'Upper' ? 77 : club.tier === 'Mid' ? 73 : 69;
 
       for (let i = 0; i < needed; i++) {
         const pos = SQUAD_POSITIONS_TEMPLATE[(existing.length + i) % SQUAD_POSITIONS_TEMPLATE.length];
-        const rawName = countryData.names[(nameIndex++) % countryData.names.length];
-        const pId = `${club.id}_r_${i + 1}_${rawName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8)}`;
         
-        if (!registry[pId]) {
-          const ovr = Math.max(66, Math.min(88, tierBaseOvr + (i % 4) - 2));
-          const age = 21 + ((i * 3 + club.id.length) % 13);
-          const isJp = club.country === '日本';
+        // Generate non-colliding unique name from dedicated pool
+        const fName = depthData.firstNames[(clubIdx * 7 + i) % depthData.firstNames.length];
+        const lName = depthData.lastNames[(clubIdx * 11 + i) % depthData.lastNames.length];
+        const uniqueFullName = `${fName} ${lName}`;
+        const pId = `p_${club.id}_depth_${i + 1}`;
 
-          registry[pId] = makeRealPlayer(
-            pId,
-            rawName,
-            club.id,
-            pos,
-            age,
-            isJp ? '日本' : countryData.nationalities[i % countryData.nationalities.length],
-            ovr,
-            ovr + (age <= 23 ? 5 : age <= 26 ? 2 : 0),
-            isJp ? (ovr >= 75 ? 2000000 : 900000) : (club.tier === 'Elite' ? 25000000 : club.tier === 'Upper' ? 12000000 : 3500000),
-            isJp ? (ovr >= 75 ? 35000 : 18000) : (club.tier === 'Elite' ? 90000 : club.tier === 'Upper' ? 45000 : 15000),
-            10 + ((i + 1) * 2) % 80,
-            i % 3 === 0 ? '左' : '右',
-            pos === 'GK' ? 'ショットストッパー' : pos === 'CB' ? 'ボール運べるCB' : 'チャンスメイカー'
-          );
-        }
+        const ovr = Math.max(65, Math.min(84, tierBaseOvr + (i % 3) - 1));
+        const age = 20 + ((clubIdx * 5 + i * 3) % 12);
+
+        const player = makeRealPlayer(
+          pId,
+          uniqueFullName,
+          club.id,
+          pos,
+          age,
+          club.country,
+          ovr,
+          ovr + (age <= 22 ? 6 : age <= 25 ? 3 : 0),
+          club.tier === 'Elite' ? 18000000 : club.tier === 'Upper' ? 9000000 : 3000000,
+          club.tier === 'Elite' ? 65000 : club.tier === 'Upper' ? 35000 : 14000,
+          26 + ((i * 3) % 60),
+          i % 3 === 0 ? '左' : '右',
+          pos === 'GK' ? 'ショットストッパー' : pos === 'CB' ? 'ボール運べるCB' : 'チャンスメイカー'
+        );
+
+        addPlayerIfUnique(player);
       }
     }
   });
 
-  return registry;
+  const completeRegistry = generateFullJLeaguePlayers(registry);
+  return completeRegistry;
 }
 
 export function populateClubsWithDefaultSquads(
   clubs: Record<string, Club>, 
   playersRegistry: Record<string, Player>
 ): { clubs: Record<string, Club>; players: Record<string, Player> } {
-  const updatedClubs = { ...clubs };
-  const updatedPlayers = { ...playersRegistry };
+  // First run automated data integrity check
+  const { players: cleanPlayers, clubs: cleanClubs } = checkPlayerDataIntegrity(playersRegistry, clubs);
 
-  // Reset playerIds in clubs to avoid duplicates
-  Object.values(updatedClubs).forEach(club => {
-    club.playerIds = [];
-  });
+  // Update squad status defaults for each club
+  Object.values(cleanClubs).forEach(club => {
+    const clubPlayers = club.playerIds.map(id => cleanPlayers[id]).filter(Boolean);
+    clubPlayers.sort((a, b) => b.ovr - a.ovr);
 
-  // Assign existing registered players to their clubs
-  Object.values(updatedPlayers).forEach(p => {
-    if (updatedClubs[p.clubId]) {
-      if (!updatedClubs[p.clubId].playerIds.includes(p.id)) {
-        updatedClubs[p.clubId].playerIds.push(p.id);
+    clubPlayers.forEach((p, idx) => {
+      if (idx < 11) {
+        p.squadStatus = 'STARTING';
+      } else if (idx < 20) {
+        // Up to 9 bench players
+        p.squadStatus = 'BENCH';
+      } else {
+        p.squadStatus = 'OUT_OF_SQUAD';
       }
-    }
+    });
   });
 
-  return { clubs: updatedClubs, players: updatedPlayers };
+  return { clubs: cleanClubs, players: cleanPlayers };
 }
 
 export function getDefaultTacticsForClub(club: Club, players: Record<string, Player>): TeamTactics {
@@ -174,8 +243,8 @@ export function getDefaultTacticsForClub(club: Club, players: Record<string, Pla
   });
 
   const remaining = clubPlayers.filter(p => !pickedIds.has(p.id));
-  const bench = remaining.slice(0, 7).map(p => p.id);
-  const reserves = remaining.slice(7).map(p => p.id);
+  const bench = remaining.slice(0, 9).map(p => p.id); // Strict 9 max bench players
+  const reserves = remaining.slice(9).map(p => p.id);
 
   return {
     formation: club.currentFormation || '4-3-3',

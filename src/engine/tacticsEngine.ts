@@ -255,6 +255,19 @@ export const FORMATION_TEMPLATES: Record<FormationName, FormationSlot[]> = {
     { position: 'LM', pitchX: 12, pitchY: 42 },
     { position: 'ST', pitchX: 50, pitchY: 16 }
   ],
+  '3-3-3-1': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'CB', pitchX: 74, pitchY: 78 },
+    { position: 'CB', pitchX: 50, pitchY: 82 },
+    { position: 'CB', pitchX: 26, pitchY: 78 },
+    { position: 'RWB', pitchX: 86, pitchY: 58 },
+    { position: 'CDM', pitchX: 50, pitchY: 64 },
+    { position: 'LWB', pitchX: 14, pitchY: 58 },
+    { position: 'RW', pitchX: 82, pitchY: 36 },
+    { position: 'CAM', pitchX: 50, pitchY: 36 },
+    { position: 'LW', pitchX: 18, pitchY: 36 },
+    { position: 'ST', pitchX: 50, pitchY: 16 }
+  ],
   '5-3-2': [
     { position: 'GK', pitchX: 50, pitchY: 92 },
     { position: 'RWB', pitchX: 88, pitchY: 70 },

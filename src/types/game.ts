@@ -15,10 +15,13 @@ export type PlayerPersonality =
   | '出場機会重視' // 出番が減るとすぐ不満
   | '給与重視' // 契約更新で好条件を要求
   | 'タイトル至上主義' // 優勝を渇望
+  | '努力家'
   | 'クラブ愛' // 忠誠心が高く移籍しにくい;
 
 export type PlayStyle = 
   | 'ゴールゲッター'
+  | 'ラインブレイカー'
+  | 'バランス型'
   | 'チャンスメイカー'
   | '俊足ドリブラー'
   | 'スピードスター'
@@ -28,11 +31,13 @@ export type PlayStyle =
   | 'ボール運べるCB'
   | '攻撃的SB'
   | '守備的SB'
+  | '守備的GK'
   | 'ビルドアップ型GK'
   | 'ショットストッパー';
 
 export type ManagerStyle = 
   | '戦術至上主義' 
+  | '戦術家'
   | '情熱型モチベーター' 
   | '名伯楽（若手育成）' 
   | '厳格なディシプリン' 
@@ -41,6 +46,7 @@ export type ManagerStyle =
 export type TacticalType = 
   | 'ゲーゲンプレス' 
   | 'ティキタカ（ポゼッション）' 
+  | 'ポゼッション主導'
   | '堅守速攻（カウンター）' 
   | 'ハイブリッドプレッシング' 
   | '5バック低重心守備' 
@@ -125,6 +131,8 @@ export interface Player {
   wage: number; // Weekly wage in Euros (€)
   contractYears: number; // Remaining years
   clubId: string;
+  currentClubId?: string;
+  canonicalPlayerId?: string;
   squadRole: '絶対的主力' | '重要選手' | 'ローテーション' | '控え・バックアップ' | '若手・育成枠';
 
   // Loan status & Period management
@@ -152,8 +160,11 @@ export interface Player {
   fatigue: number; // 0 (fresh) - 100 (exhausted)
   stamina?: number; // 60 - 99 natural stamina
   inMatchStamina?: number; // 0 - 100 live during match
-  injuryStatus?: 'FIT' | 'INJURED' | 'DOUBTFUL';
+  injuryStatus?: 'HEALTHY' | 'INJURED' | 'FIT' | 'DOUBTFUL';
+  injuryStartDate?: string;
   injuryReturnDate?: string;
+  injuryType?: string;
+  injuryDaysRemaining?: number;
   injury: PlayerInjury;
   suspension: PlayerSuspension;
 
@@ -170,7 +181,10 @@ export type LeagueKey =
   | 'laliga'
   | 'bundesliga'
   | 'serie-a'
-  | 'ligue-1';
+  | 'ligue-1'
+  | 'j1-league'
+  | 'j2-league'
+  | 'j3-league';
 
 export type CupKey = 
   | 'ucl'
@@ -182,7 +196,9 @@ export type CupKey =
   | 'dfb-pokal'
   | 'coppa-italia'
   | 'coupe-de-france'
-  | 'super-cup';
+  | 'super-cup'
+  | 'levain-cup'
+  | 'emperors-cup';
 
 export interface Club {
   id: string;
@@ -227,6 +243,7 @@ export type FormationName =
   | '3-4-1-2'
   | '3-1-4-2'
   | '3-2-4-1'
+  | '3-3-3-1'
   | '5-3-2'
   | '5-4-1'
   | '5-2-3'
@@ -298,6 +315,7 @@ export interface MatchFixture {
   isUserMatch: boolean;
   extraTimePlayed?: boolean;
   penaltyShootout?: { homeScore: number; awayScore: number };
+  isResultApplied?: boolean;
 }
 
 export interface StandingsRow {

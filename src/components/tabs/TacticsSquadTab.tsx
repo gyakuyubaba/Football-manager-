@@ -67,6 +67,12 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
     if (!selectedStarterId) return;
     setBenchLimitError(null);
 
+    const targetPlayer = state.players[targetPlayerId];
+    if (targetPlayer?.injury?.isInjured || targetPlayer?.injuryStatus === 'INJURED' || (state.currentDate && targetPlayer?.injuryReturnDate && targetPlayer.injuryReturnDate > state.currentDate)) {
+      setBenchLimitError(`【負傷警告】${targetPlayer.name}選手は負傷中のため、スタメンに出場・登録できません。(復帰予定: ${targetPlayer.injuryReturnDate || '未定'})`);
+      return;
+    }
+
     const newStarters = tactics.lineup.starters.map(s => {
       if (s.playerId === selectedStarterId) {
         return { ...s, playerId: targetPlayerId };
@@ -111,6 +117,12 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
 
   // Move player from out-of-squad to bench (Strict 9-player maximum check: Requirement 11)
   const handlePromoteToBench = (playerId: string) => {
+    const p = state.players[playerId];
+    if (p?.injury?.isInjured || p?.injuryStatus === 'INJURED' || (state.currentDate && p?.injuryReturnDate && p.injuryReturnDate > state.currentDate)) {
+      setBenchLimitError(`【負傷警告】${p?.name || 'この'}選手は負傷中のため、ベンチに登録できません。(復帰予定: ${p?.injuryReturnDate || '未定'})`);
+      return;
+    }
+
     let newBench = [...tactics.lineup.bench];
     if (newBench.length >= 9) {
       setBenchLimitError('ベンチには最大9人まで登録できます。');
@@ -596,10 +608,15 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                           ) : (
                             <button
                               type="button"
+                              disabled={isInjured || isSuspended}
                               onClick={(e) => { e.stopPropagation(); handlePromoteToBench(p.id); }}
-                              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 text-[10px] border border-slate-700 font-semibold"
+                              className={`px-2 py-1 rounded text-[10px] border font-semibold ${
+                                isInjured || isSuspended
+                                  ? 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed'
+                                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 border-slate-700'
+                              }`}
                             >
-                              ベンチへ
+                              {isInjured ? '負傷中' : isSuspended ? '出場停止' : 'ベンチへ'}
                             </button>
                           )}
                         </div>

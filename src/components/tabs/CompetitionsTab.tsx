@@ -13,7 +13,10 @@ const LEAGUE_NAMES: Record<LeagueKey, string> = {
   'laliga': 'LaLiga (スペイン)',
   'bundesliga': 'Bundesliga (ドイツ)',
   'serie-a': 'Serie A (イタリア)',
-  'ligue-1': 'Ligue 1 (フランス)'
+  'ligue-1': 'Ligue 1 (フランス)',
+  'j1-league': '明治安田J1リーグ (日本)',
+  'j2-league': '明治安田J2リーグ (日本)',
+  'j3-league': '明治安田J3リーグ (日本)'
 };
 
 export const CompetitionsTab: React.FC<Props> = ({ state, onOpenMatch }) => {
@@ -39,7 +42,7 @@ export const CompetitionsTab: React.FC<Props> = ({ state, onOpenMatch }) => {
             <h2 className="text-xl font-bold text-white font-display">大会・順位表・対戦日程</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            2025/26シーズンの主要リーグ順位表と試合日程・結果一覧です。
+            欧州5大リーグおよび明治安田Jリーグの順位表と対戦日程・試合結果です。
           </p>
         </div>
 
@@ -91,7 +94,7 @@ export const CompetitionsTab: React.FC<Props> = ({ state, onOpenMatch }) => {
             <h3 className="text-sm font-bold text-white uppercase tracking-wider">
               {LEAGUE_NAMES[selectedLeague]} 順位表
             </h3>
-            <span className="text-xs text-slate-500 font-mono">2025/26 SEASON</span>
+            <span className="text-xs text-slate-500 font-mono">{state.season} SEASON</span>
           </div>
 
           <div className="overflow-x-auto">

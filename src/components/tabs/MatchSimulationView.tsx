@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MatchFixture, GameWorldState, TeamTactics, MatchEvent, Player } from '../../types/game';
-import { simulateFullMatch, generateAssistantCoachAdvice, finalMatchEligibilityCheck } from '../../engine/matchEngine';
+import { simulateFullMatch, generateAssistantCoachAdvice, finalMatchEligibilityCheck, MatchEligibilityCheckResult } from '../../engine/matchEngine';
+import { autoReplaceIneligiblePlayers } from '../../engine/dataValidator';
 import { getDefaultTacticsForClub } from '../../data/squadPopulator';
 import { FatigueGauge, ConditionDot } from '../common/FatigueGauge';
 import { useI18n } from '../../i18n/LanguageContext';
@@ -195,71 +196,75 @@ export const MatchSimulationView: React.FC<Props> = ({
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [revealedEvents]);
 
-  const [eligibilityError, setEligibilityError] = useState<string | null>(null);
+  const [eligibilityResult, setEligibilityResult] = useState<MatchEligibilityCheckResult | null>(() => {
+    return finalMatchEligibilityCheck(
+      tactics.lineup.starters.map(s => s.playerId),
+      tactics.lineup.bench,
+      state.userClubId || '',
+      state.players,
+      state.currentDate
+    );
+  });
+  const [dateAlert, setDateAlert] = useState<string | null>(null);
 
   const handleAutoReplaceIneligible = () => {
-    const currentStarters = [...tactics.lineup.starters];
-    let currentBench = [...tactics.lineup.bench];
-    let replacedAny = false;
+    const res = autoReplaceIneligiblePlayers(
+      tactics.lineup.starters.map(s => s.playerId),
+      tactics.lineup.bench,
+      state.userClubId || '',
+      state.players,
+      state.currentDate
+    );
 
-    // Available healthy candidates from bench or reserves
-    const availableHealthy = (state.clubs[state.userClubId || '']?.playerIds || [])
-      .map(id => state.players[id])
-      .filter(p => p && !p.injury?.isInjured && p.injuryStatus !== 'INJURED' && !p.suspension?.isSuspended && !currentStarters.some(s => s.playerId === p.id));
+    const newStarters = res.starters.map((pId, idx) => ({
+      ...tactics.lineup.starters[idx],
+      playerId: pId
+    }));
 
-    currentStarters.forEach((st, idx) => {
-      const p = state.players[st.playerId];
-      if (p && (p.injury?.isInjured || p.injuryStatus === 'INJURED' || p.suspension?.isSuspended || p.squadStatus === 'OUT_OF_SQUAD')) {
-        const candidate = availableHealthy.shift();
-        if (candidate) {
-          currentStarters[idx] = { ...st, playerId: candidate.id };
-          currentBench = currentBench.filter(id => id !== candidate.id);
-          replacedAny = true;
-        }
+    const newTactics: TeamTactics = {
+      ...tactics,
+      lineup: {
+        ...tactics.lineup,
+        starters: newStarters,
+        bench: res.bench
       }
-    });
+    };
 
-    if (replacedAny) {
-      setTactics({
-        ...tactics,
-        lineup: {
-          ...tactics.lineup,
-          starters: currentStarters,
-          bench: currentBench
-        }
-      });
-      setEligibilityError(null);
-    }
+    setTactics(newTactics);
+
+    const check = finalMatchEligibilityCheck(
+      res.starters,
+      res.bench,
+      state.userClubId || '',
+      state.players,
+      state.currentDate
+    );
+    setEligibilityResult(check.isEligible ? null : check);
   };
 
   const handleStartKickoff = () => {
     // 1. Match date check (Requirement 12)
     if (fixture.date > state.currentDate) {
-      setEligibilityError(`この試合はまだ開始できません。(試合予定日: ${fixture.date} / 現在ゲーム日: ${state.currentDate})`);
+      setDateAlert(`この試合はまだ開始できません。(試合予定日: ${fixture.date} / 現在ゲーム日: ${state.currentDate})`);
+      return;
+    }
+    setDateAlert(null);
+
+    // 2. FINAL_MATCH_ELIGIBILITY_CHECK (Requirement 1, 9, 10)
+    const check = finalMatchEligibilityCheck(
+      tactics.lineup.starters.map(s => s.playerId),
+      tactics.lineup.bench,
+      state.userClubId || '',
+      state.players,
+      state.currentDate
+    );
+
+    if (!check.isEligible) {
+      setEligibilityResult(check);
       return;
     }
 
-    // 2. Final Match Eligibility Check (Requirement 9 & 10)
-    const currentStarters = tactics.lineup.starters.map(s => state.players[s.playerId]).filter(Boolean);
-    const injured = currentStarters.filter(p => p.injury?.isInjured || p.injuryStatus === 'INJURED');
-    if (injured.length > 0) {
-      setEligibilityError(`【負傷警告】${injured.map(p => p.name).join('、')}選手は負傷しているため、この試合には出場できません。選手を変更してください。`);
-      return;
-    }
-
-    const suspended = currentStarters.filter(p => p.suspension?.isSuspended);
-    if (suspended.length > 0) {
-      setEligibilityError(`【出場停止】${suspended.map(p => p.name).join('、')}選手は出場停止処分中のため出場できません。選手を変更してください。`);
-      return;
-    }
-
-    const outOfSquad = currentStarters.filter(p => p.squadStatus === 'OUT_OF_SQUAD');
-    if (outOfSquad.length > 0) {
-      setEligibilityError(`【ベンチ外】${outOfSquad.map(p => p.name).join('、')}選手はベンチ外に設定されています。スタメン登録を確認してください。`);
-      return;
-    }
-
-    setEligibilityError(null);
+    setEligibilityResult(null);
     setMatchPhase('first_half');
     setIsPlaying(true);
   };
@@ -586,12 +591,12 @@ export const MatchSimulationView: React.FC<Props> = ({
         {/* Pre-Match Eligibility or Date Alert Banner (Requirements 9, 10, 12) */}
         {matchPhase === 'pre' && (
           <>
-            {fixture.date > state.currentDate && (
+            {(fixture.date > state.currentDate || dateAlert) && (
               <div className="bg-amber-950/80 border border-amber-600/60 rounded-2xl p-4 flex items-center justify-between gap-3 text-amber-200">
                 <div className="flex items-center gap-2.5">
                   <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
                   <span className="text-xs sm:text-sm font-semibold">
-                    この試合はまだ開始できません。試合予定日: <span className="font-bold text-white">{fixture.date}</span> (現在ゲーム日: {state.currentDate})
+                    {dateAlert || `この試合はまだ開始できません。試合予定日: ${fixture.date} (現在ゲーム日: ${state.currentDate})`}
                   </span>
                 </div>
                 <button
@@ -604,21 +609,40 @@ export const MatchSimulationView: React.FC<Props> = ({
               </div>
             )}
 
-            {eligibilityError && (
-              <div className="bg-red-950/80 border border-red-600/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-red-200 animate-in fade-in duration-200">
-                <div className="flex items-center gap-2.5">
-                  <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
-                  <span className="text-xs sm:text-sm font-bold">
-                    {eligibilityError}
-                  </span>
+            {eligibilityResult && !eligibilityResult.isEligible && (
+              <div className="bg-red-950/90 border-2 border-red-500/80 rounded-2xl p-4 text-red-200 shadow-xl space-y-3 animate-in fade-in duration-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-red-800/60 pb-2.5">
+                  <div className="flex items-center gap-2.5 text-red-400 font-bold text-sm sm:text-base">
+                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <span>出場できない選手が含まれています</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAutoReplaceIneligible}
+                    className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-400 active:scale-[0.98] text-slate-950 text-xs font-black shadow-md shadow-red-500/30 cursor-pointer shrink-0 transition-transform flex items-center justify-center gap-1.5"
+                  >
+                    <span>選手を入れ替える（自動最適化）</span>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAutoReplaceIneligible}
-                  className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-400 active:scale-[0.98] text-slate-950 text-xs font-black shadow-md shadow-red-500/20 cursor-pointer shrink-0"
-                >
-                  健全な選手と自動交代して解決
-                </button>
+                
+                <p className="text-xs text-red-300">
+                  ※負傷中・出場停止処分中・ベンチ外の選手は試合への出場・ベンチ入りが禁止されています。該当選手を外してください。
+                </p>
+
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {eligibilityResult.ineligibleAll.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-black/40 px-3 py-2 rounded-xl text-xs border border-red-900/50">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-red-900 text-red-200 font-bold text-[10px] shrink-0">
+                          {item.badge}
+                        </span>
+                        <span className="font-bold text-white">{item.player.name}</span>
+                        <span className="text-slate-400 text-[11px]">({item.role === 'STARTER' ? 'スタメン' : 'ベンチ'})</span>
+                      </div>
+                      <span className="text-red-300 text-[11px] font-medium">{item.reason}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </>
@@ -632,9 +656,9 @@ export const MatchSimulationView: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={handleStartKickoff}
-                disabled={fixture.date > state.currentDate}
+                disabled={fixture.date > state.currentDate || (eligibilityResult !== null && !eligibilityResult.isEligible)}
                 className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-lg transition-all cursor-pointer ${
-                  fixture.date > state.currentDate
+                  fixture.date > state.currentDate || (eligibilityResult !== null && !eligibilityResult.isEligible)
                     ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                     : 'bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 shadow-emerald-500/20'
                 }`}
@@ -643,6 +667,8 @@ export const MatchSimulationView: React.FC<Props> = ({
                 <span>
                   {fixture.date > state.currentDate 
                     ? `この試合はまだ開始できません (${fixture.date})` 
+                    : (eligibilityResult && !eligibilityResult.isEligible)
+                    ? '出場資格エラー（選手を入れ替えてください）'
                     : t.kickoff}
                 </span>
               </button>
@@ -993,15 +1019,21 @@ export const MatchSimulationView: React.FC<Props> = ({
                 <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                   {userBench.map(p => {
                     const isSelected = subPlayerOnId === p.id;
+                    const isInjured = p.injury?.isInjured || p.injuryStatus === 'INJURED' || (state.currentDate && p.injuryReturnDate && p.injuryReturnDate > state.currentDate);
+                    const isSuspended = p.suspension?.isSuspended;
+                    const isUnavailable = isInjured || isSuspended;
 
                     return (
                       <button
                         key={p.id}
                         type="button"
+                        disabled={isUnavailable}
                         onClick={() => setSubPlayerOnId(p.id)}
                         className={`w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-emerald-950/60 border-emerald-500 ring-1 ring-emerald-500/40'
+                            : isUnavailable
+                            ? 'opacity-40 bg-slate-950 border-slate-900 cursor-not-allowed'
                             : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
                         }`}
                       >
@@ -1009,6 +1041,16 @@ export const MatchSimulationView: React.FC<Props> = ({
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-blue-400 font-mono w-7">{p.position}</span>
                             <span className="text-xs font-bold text-white">{p.name}</span>
+                            {isInjured && (
+                              <span className="px-1.5 py-0.2 rounded bg-red-900 text-red-200 text-[9px] font-bold">
+                                【負傷】
+                              </span>
+                            )}
+                            {isSuspended && (
+                              <span className="px-1.5 py-0.2 rounded bg-amber-900 text-amber-200 text-[9px] font-bold">
+                                【停止】
+                              </span>
+                            )}
                           </div>
                           <span className="text-[11px] font-mono font-bold text-slate-300">OVR {p.ovr}</span>
                         </div>

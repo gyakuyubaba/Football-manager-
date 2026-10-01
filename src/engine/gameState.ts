@@ -8,12 +8,12 @@ import {
   TeamTactics, 
   NewsItem 
 } from '../types/game';
-import { ALL_116_CLUBS } from '../data/clubsData';
+import { ALL_CLUBS } from '../data/clubsData';
 import { INITIAL_YOUTH_ACADEMY } from '../data/initialData';
 import { buildCompletePlayersRegistry, populateClubsWithDefaultSquads, getDefaultTacticsForClub } from '../data/squadPopulator';
 import { getDaysUntilDeadline } from './dateEngine';
 
-export const SAVE_KEY = 'fm26_career_save_v3_europe';
+export const SAVE_KEY = 'fm26_career_save_v4_unified';
 
 export function createInitialStandings(clubs: Record<string, Club>): Record<LeagueKey, StandingsRow[]> {
   const standings: Record<LeagueKey, StandingsRow[]> = {
@@ -21,7 +21,10 @@ export function createInitialStandings(clubs: Record<string, Club>): Record<Leag
     'laliga': [],
     'bundesliga': [],
     'serie-a': [],
-    'ligue-1': []
+    'ligue-1': [],
+    'j1-league': [],
+    'j2-league': [],
+    'j3-league': []
   };
 
   Object.values(clubs).forEach(club => {
@@ -148,7 +151,7 @@ export function generateSeasonFixtures(clubs: Record<string, Club>, userClubId: 
 
 export function createNewGameWorld(manager: ManagerProfile): GameWorldState {
   const initialClubsMap: Record<string, Club> = {};
-  ALL_116_CLUBS.forEach(c => {
+  ALL_CLUBS.forEach(c => {
     initialClubsMap[c.id] = { ...c, playerIds: [] };
   });
 

@@ -1,5 +1,5 @@
 import { GameWorldState, MatchFixture, StandingsRow, LeagueKey, NewsItem, Player } from '../types/game';
-import { simulateFullMatch } from './matchEngine';
+import { simulateFullMatch, calculatePlayerInjuryRisk, INJURY_VARIETIES } from './matchEngine';
 import { simulateAITransfers } from './transferEngine';
 import { getDefaultTacticsForClub } from '../data/squadPopulator';
 
@@ -27,7 +27,6 @@ export function getDaysUntilDeadline(dateStr: string): number {
   const parts = dateStr.split('-');
   const year = parseInt(parts[0], 10);
   const month = parseInt(parts[1], 10);
-  const day = parseInt(parts[2], 10);
 
   if (month === 7 || month === 8) {
     const deadline = new Date(`${year}-08-31`);
@@ -51,6 +50,59 @@ export interface DayProgressionResult {
   userMatchFixture?: MatchFixture;
 }
 
+// -------------------------------------------------------------
+// 【9. MATCH_RESULT 大会・順位表・選手個人成績への確実な反映】
+// -------------------------------------------------------------
+export function applyMatchResultToWorld(
+  state: GameWorldState,
+  fixture: MatchFixture,
+  updatedPlayers?: Record<string, Player>
+): GameWorldState {
+  if (fixture.isResultApplied) {
+    return state; // Duplicate reflection prevention (Requirement 9)
+  }
+
+  // 1. Update fixture record
+  const fixtures = [...state.fixtures];
+  const idx = fixtures.findIndex(f => f.id === fixture.id);
+  const finalFixture: MatchFixture = {
+    ...fixture,
+    status: 'finished',
+    isResultApplied: true
+  };
+  if (idx !== -1) {
+    fixtures[idx] = finalFixture;
+  }
+
+  // 2. Update standings if this is a league fixture
+  const standings = { ...state.standings };
+  const leagueKey = finalFixture.competition as LeagueKey;
+  if (standings[leagueKey]) {
+    updateStandingsAfterMatch(standings[leagueKey], finalFixture);
+  }
+
+  // 3. Update player season stats from events
+  const players = { ...(updatedPlayers || state.players) };
+  if (finalFixture.events) {
+    finalFixture.events.forEach(e => {
+      if (e.playerId && players[e.playerId]) {
+        if (e.type === 'yellow_card') {
+          players[e.playerId].stats.yellowCards += 1;
+        } else if (e.type === 'red_card' || e.type === 'second_yellow') {
+          players[e.playerId].stats.redCards += 1;
+        }
+      }
+    });
+  }
+
+  return {
+    ...state,
+    fixtures,
+    standings,
+    players
+  };
+}
+
 // Advance exactly 1 day
 export function advanceOneDay(currentState: GameWorldState): DayProgressionResult {
   const nextDate = addDays(currentState.currentDate, 1);
@@ -63,18 +115,18 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
 
   let stoppedReason: string | undefined;
 
-  // 1. Fatigue Recovery & Daily Health check for players
+  // 1. Fatigue Recovery & Daily Health check for players (Requirement 1 & 2)
   const updatedPlayers = { ...state.players };
   let injuryNews: NewsItem | null = null;
 
   Object.values(updatedPlayers).forEach(p => {
-    // Natural fatigue recovery (+8 to +15% per rest day)
+    // Natural fatigue recovery (+8 to +16% per rest day)
     if (p.fatigue > 0) {
-      const restFactor = state.trainingFocus === 'コンディション回復' ? 18 : 10;
+      const restFactor = state.trainingFocus === 'コンディション回復' ? 18 : 11;
       p.fatigue = Math.max(0, p.fatigue - restFactor);
     }
 
-    // Condition subtle fluctuation
+    // Condition subtle daily fluctuation
     if (Math.random() < 0.15) {
       const conditions: Player['condition'][] = ['pink', 'red', 'yellow', 'cyan', 'purple'];
       const weights = [0.15, 0.35, 0.35, 0.10, 0.05];
@@ -89,45 +141,73 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
       }
     }
 
-    // Injury recovery progression
-    if (p.injury.isInjured && p.injury.recoveryDays) {
-      p.injury.recoveryDays -= 1;
-      if (p.injury.recoveryDays <= 0) {
+    // --- Injury state maintenance & recovery check (Requirement 1: 日付を進めても怪我状態を維持) ---
+    const isInjured = p.injuryStatus === 'INJURED' || p.injury?.isInjured;
+    if (isInjured) {
+      if (p.injuryDaysRemaining !== undefined && p.injuryDaysRemaining > 0) {
+        p.injuryDaysRemaining -= 1;
+      }
+      if (p.injury?.recoveryDays !== undefined && p.injury.recoveryDays > 0) {
+        p.injury.recoveryDays -= 1;
+      }
+
+      // Check if return date reached or recovery days completed
+      const reachedReturnDate = p.injuryReturnDate && nextDate >= p.injuryReturnDate;
+      const zeroDaysLeft = p.injuryDaysRemaining === 0 || (p.injury?.recoveryDays === 0 && !p.injuryReturnDate);
+
+      if (reachedReturnDate || zeroDaysLeft) {
+        p.injuryStatus = 'HEALTHY';
         p.injury.isInjured = false;
         p.injury.recoveryDays = 0;
         p.injury.returnDate = undefined;
-        p.injuryStatus = 'FIT';
         p.injuryReturnDate = undefined;
+        p.injuryStartDate = undefined;
+        p.injuryType = undefined;
+        p.injuryDaysRemaining = 0;
+
         if (p.clubId === state.userClubId) {
           stoppedReason = `【戦列復帰】主力選手の${p.name}が怪我から全体練習に完全合流しました！`;
         }
+      } else {
+        // Strictly maintain INJURED state and prevent participation
+        p.injuryStatus = 'INJURED';
+        p.injury.isInjured = true;
+        if (p.squadStatus === 'STARTING' || p.squadStatus === 'BENCH') {
+          p.squadStatus = 'OUT_OF_SQUAD';
+        }
       }
-    }
-
-    // Random minor training injury (0.3% chance per player per day)
-    if (!p.injury.isInjured && Math.random() < 0.003) {
-      const days = Math.floor(Math.random() * 14) + 4;
-      p.injury = {
-        isInjured: true,
-        type: '足首の捻挫 (練習中)',
-        recoveryDays: days,
-        returnDate: addDays(nextDate, days)
-      };
-      p.injuryStatus = 'INJURED';
-      p.injuryReturnDate = addDays(nextDate, days);
-      if (p.clubId === state.userClubId) {
-        p.squadStatus = 'OUT_OF_SQUAD';
-        stoppedReason = `【緊急速報】${p.name}が練習中に負傷しました。(全治約${days}日・ベンチ外へ移動)`;
-        injuryNews = {
-          id: `news_inj_${Date.now()}`,
-          date: nextDate,
-          headline: `【負傷者情報】${state.clubs[state.userClubId]?.name}の${p.name}が練習中に負傷離脱`,
-          body: `チームに痛手。${p.name}が本日のトレーニング中に負傷。メディカルスタッフの初期診断によると全治約${days}日の見込み。試合出場不可のためベンチ外へ移動しました。`,
-          category: 'injury',
-          relatedClubId: state.userClubId,
-          relatedPlayerId: p.id,
-          importance: 'high'
+    } else {
+      // Training injury risk with fatigue scaling (Requirement 2)
+      const trainingRisk = calculatePlayerInjuryRisk(p, 30, '標準的') * 0.25;
+      if (Math.random() < trainingRisk) {
+        const chosenInj = INJURY_VARIETIES[Math.floor(Math.random() * INJURY_VARIETIES.length)];
+        const returnDate = addDays(nextDate, chosenInj.days);
+        p.injury = {
+          isInjured: true,
+          type: `${chosenInj.name} (練習中)`,
+          recoveryDays: chosenInj.days,
+          returnDate
         };
+        p.injuryStatus = 'INJURED';
+        p.injuryStartDate = nextDate;
+        p.injuryReturnDate = returnDate;
+        p.injuryType = `${chosenInj.name} (練習中)`;
+        p.injuryDaysRemaining = chosenInj.days;
+        p.squadStatus = 'OUT_OF_SQUAD';
+
+        if (p.clubId === state.userClubId) {
+          stoppedReason = `【緊急速報】${p.name}が練習中に負傷しました。(全治約${chosenInj.days}日・復帰予定: ${returnDate})`;
+          injuryNews = {
+            id: `news_inj_${Date.now()}`,
+            date: nextDate,
+            headline: `【負傷者情報】${state.clubs[state.userClubId]?.name}の${p.name}が練習中に負傷離脱`,
+            body: `チームに痛手。${p.name}が本日のトレーニング中に負傷。メディカルスタッフの初期診断によると全治約${chosenInj.days}日（復帰予定: ${returnDate}）の見込み。試合出場不可のためベンチ外へ移動しました。`,
+            category: 'injury',
+            relatedClubId: state.userClubId,
+            relatedPlayerId: p.id,
+            importance: 'high'
+          };
+        }
       }
     }
 
@@ -138,15 +218,9 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
       p.passing = Math.min(99, p.passing + 1);
       p.shooting = Math.min(99, p.shooting + 1);
     }
-
-    // Veteran player gradual decline (age >= 34)
-    if (p.age >= 34 && Math.random() < 0.015) {
-      p.ovr = Math.max(60, p.ovr - 1);
-      p.pace = Math.max(30, p.pace - 1);
-    }
   });
 
-  // 1.5. Daily Loan Expiration Check (Requirement 5 & 8)
+  // Daily Loan Expiration Check
   const userClubId = state.userClubId;
   const loanReturnNews: NewsItem[] = [];
   Object.values(updatedPlayers).forEach(p => {
@@ -157,22 +231,19 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
       const loanClub = state.clubs[loanClubId];
 
       if (parentClub && loanClub) {
-        // Remove from loan club
         loanClub.playerIds = loanClub.playerIds.filter(id => id !== p.id);
-        // Add to parent club if not already present
         if (!parentClub.playerIds.includes(p.id)) {
           parentClub.playerIds.push(p.id);
         }
 
-        // Update player
         p.clubId = parentClub.id;
+        p.currentClubId = parentClub.id;
         p.isLoaned = false;
         p.loanFromClubId = undefined;
         p.loanEndDate = undefined;
         p.loanOptionBuyFee = undefined;
         p.squadStatus = 'OUT_OF_SQUAD';
 
-        // Add to history
         if (!state.transferHistory) state.transferHistory = [];
         state.transferHistory.unshift({
           id: `tr_loan_return_${Date.now()}_${p.id}`,
@@ -212,84 +283,12 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
     state.news = [injuryNews, ...state.news];
   }
 
-  // 1.8. Rare Budget & Financial Events (Requirement 36)
-  if (userClubId && state.clubs[userClubId] && Math.random() < 0.012) {
-    const club = state.clubs[userClubId];
-    const isPositive = Math.random() < 0.65;
-    if (isPositive) {
-      const bonus = club.tier === 'Elite' ? 12000000 : club.tier === 'Upper' ? 6000000 : 2500000;
-      club.transferBudget += bonus;
-      const finNews: NewsItem = {
-        id: `news_fin_pos_${Date.now()}`,
-        date: nextDate,
-        headline: `【クラブ財政】グローバルスポンサー契約更新および特別ボーナス (€${(bonus / 1000000).toFixed(1)}M) 獲得！`,
-        body: `好調なクラブ運営の成果。商業パートナーシップの新規契約締結により、移籍予算に€${(bonus / 1000000).toFixed(1)}Mが追加拠出されました。`,
-        category: 'press',
-        relatedClubId: userClubId,
-        importance: 'medium'
-      };
-      state.news = [finNews, ...state.news];
-    } else {
-      const cost = club.tier === 'Elite' ? 2500000 : club.tier === 'Upper' ? 1200000 : 600000;
-      club.transferBudget = Math.max(500000, club.transferBudget - cost);
-      const finNews: NewsItem = {
-        id: `news_fin_neg_${Date.now()}`,
-        date: nextDate,
-        headline: `【クラブ運営】スタジアム設備緊急メンテナンスおよび諸経費 (€${(cost / 1000000).toFixed(1)}M) 拠出`,
-        body: `安全基準への適合およびトレーニング環境改善のため、理事会承認のもと設備修繕費を支出しました。`,
-        category: 'press',
-        relatedClubId: userClubId,
-        importance: 'low'
-      };
-      state.news = [finNews, ...state.news];
-    }
-  }
-
-  // 1.9. End of Season Revenue & UCL Qualification (Requirement 31, 32, 37)
-  if (nextDate === '2027-05-25' && userClubId && state.clubs[userClubId]) {
-    const club = state.clubs[userClubId];
-    const endSeasonPayout = club.tier === 'Elite' ? 35000000 : club.tier === 'Upper' ? 18000000 : 8000000;
-    club.transferBudget += endSeasonPayout;
-
-    // Determine Year 2 European Qualifiers based on standings
-    const qualifiedClubIds: string[] = [];
-    (['premier-league', 'laliga', 'bundesliga', 'serie-a', 'ligue-1'] as LeagueKey[]).forEach(lKey => {
-      const st = state.standings[lKey];
-      if (st && st.length >= 4) {
-        qualifiedClubIds.push(...st.slice(0, 4).map(r => r.clubId));
-      }
-    });
-    state.year2UCLQualifiedClubIds = qualifiedClubIds;
-
-    const isUCLQualified = qualifiedClubIds.includes(userClubId);
-    const endSeasonNews: NewsItem = {
-      id: `news_end_season_${Date.now()}`,
-      date: nextDate,
-      headline: `【シーズン総括】大会賞金および年間放映権・グッズ分配金 €${(endSeasonPayout / 1000000).toFixed(1)}M 受領！`,
-      body: `2026/27シーズン終了に伴い、年間収益がクラブ財政へ反映されました。${isUCLQualified ? '来季2年目のUEFAチャンピオンズリーグ出場権を獲得！' : '来季へ向けて新たな戦力補強が計画されています。'}`,
-      category: 'tournament',
-      relatedClubId: userClubId,
-      importance: 'high'
-    };
-    state.news = [endSeasonNews, ...state.news];
-    stoppedReason = `【シーズン終了報告】年間収支決算（€${(endSeasonPayout / 1000000).toFixed(1)}M獲得）が完了しました！`;
-  }
-
-  // 2. Pre-Season Deadline check (July 15)
-  if (nextDate === '2026-07-15' && !state.selectedPreSeason) {
-    stoppedReason = '【重要期限】本日はプレシーズン大会の参加申込最終日です。';
-  }
-
-  // 3. Transfer window deadline day check
-  if (nextDate === '2026-08-31' || nextDate === '2026-01-31') {
-    state.showDeadlineSummary = true;
-    stoppedReason = '【移籍市場最終日】夏の移籍ウィンドウのデッドラインデイを迎えました！各クラブの駆け込み補強がピークに達しています。';
-  }
-
-  // 4. Autonomous AI Transfers
+  // Autonomous AI Transfers
   state = simulateAITransfers(state);
 
-  // 5. Matches scheduled for today
+  // -------------------------------------------------------------
+  // 【10. 全試合消化 (AIクラブもスケジュール通りに全試合を進行)】
+  // -------------------------------------------------------------
   const todayFixtures = state.fixtures.filter(f => f.date === nextDate);
   const userFixture = todayFixtures.find(f => f.homeClubId === state.userClubId || f.awayClubId === state.userClubId);
 
@@ -297,13 +296,13 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
   if (userFixture && userFixture.status === 'upcoming') {
     return {
       updatedState: state,
-      stoppedReason: `【MATCH DAY】本日 ${state.clubs[userFixture.awayClubId]?.shortName} 戦が予定されています！`,
+      stoppedReason: `【MATCH DAY】本日 ${state.clubs[userFixture.awayClubId]?.shortName || '対戦相手'} 戦が予定されています！`,
       hasUserMatchToday: true,
       userMatchFixture: userFixture
     };
   }
 
-  // For other AI-only fixtures today, simulate them automatically
+  // Simulate all AI fixtures scheduled for today across all competitions
   todayFixtures.forEach(f => {
     if (f.status === 'upcoming') {
       const homeClub = state.clubs[f.homeClubId];
@@ -312,26 +311,23 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
         const homeTac = getDefaultTacticsForClub(homeClub, state.players);
         const awayTac = getDefaultTacticsForClub(awayClub, state.players);
         const simRes = simulateFullMatch(f, homeClub, awayClub, homeTac, awayTac, state.players);
-        
-        // Update fixture in state
-        const idx = state.fixtures.findIndex(fix => fix.id === f.id);
-        if (idx !== -1) {
-          state.fixtures[idx] = simRes.fixture;
-        }
-        state.players = simRes.updatedPlayers;
-
-        // Update standings if league match
-        if (homeClub.league && state.standings[homeClub.league]) {
-          updateStandingsAfterMatch(state.standings[homeClub.league], simRes.fixture);
-        }
+        state = applyMatchResultToWorld(state, simRes.fixture, simRes.updatedPlayers);
       }
     }
   });
 
-  // 6. Game World State Integrity Check (Requirement 43)
-  const validation = validateGameWorldState(state);
-  if (!validation.isValid && validation.issues.length > 0) {
-    console.warn('Game world auto-corrected issues:', validation.issues);
+  // End of Season Revenue & Promotions / Relegations check (May 25)
+  if (nextDate === '2027-05-25') {
+    const promRel = processSeasonEndPromotionsAndRelegations(state);
+    state = promRel.state;
+    state.news = [promRel.news, ...state.news];
+    stoppedReason = '【シーズン全日程終了】J1/J2/J3の昇格・降格クラブおよび欧州カップ戦出場クラブが決定しました！';
+  }
+
+  // Transfer window deadline day check
+  if (nextDate === '2026-08-31' || nextDate === '2026-01-31') {
+    state.showDeadlineSummary = true;
+    stoppedReason = '【移籍市場最終日】夏の移籍ウィンドウのデッドラインデイを迎えました！';
   }
 
   return {
@@ -340,41 +336,53 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
   };
 }
 
-// Requirement 43: Validate game world integrity daily
-export function validateGameWorldState(state: GameWorldState): { isValid: boolean; issues: string[] } {
-  const issues: string[] = [];
-  const playerClubMap = new Map<string, string>();
+// -------------------------------------------------------------
+// 【7. Jリーグ昇降格システム (SEASON END PROMOTION & RELEGATION)】
+// -------------------------------------------------------------
+export function processSeasonEndPromotionsAndRelegations(state: GameWorldState): { state: GameWorldState; news: NewsItem } {
+  const clubs = { ...state.clubs };
+  const j1Rows = state.standings['j1-league'] || [];
+  const j2Rows = state.standings['j2-league'] || [];
+  const j3Rows = state.standings['j3-league'] || [];
 
-  // Check unique club ownership
-  Object.values(state.clubs).forEach(club => {
-    // Budget check
-    if (club.transferBudget < 0) {
-      issues.push(`Club ${club.name} had negative budget €${club.transferBudget}. Corrected to 0.`);
-      club.transferBudget = 0;
-    }
+  // J1 bottom 3 relegated to J2
+  const j1Relegated = j1Rows.length >= 20 ? j1Rows.slice(-3).map(r => r.clubId) : [];
+  // J2 top 3 promoted to J1
+  const j2Promoted = j2Rows.length >= 20 ? j2Rows.slice(0, 3).map(r => r.clubId) : [];
 
-    club.playerIds.forEach(pId => {
-      if (playerClubMap.has(pId)) {
-        issues.push(`Player ${pId} was registered in both ${playerClubMap.get(pId)} and ${club.id}. Corrected.`);
-      } else {
-        playerClubMap.set(pId, club.id);
-      }
-    });
+  // J2 bottom 3 relegated to J3
+  const j2Relegated = j2Rows.length >= 20 ? j2Rows.slice(-3).map(r => r.clubId) : [];
+  // J3 top 3 promoted to J2
+  const j3Promoted = j3Rows.length >= 20 ? j3Rows.slice(0, 3).map(r => r.clubId) : [];
+
+  j1Relegated.forEach(id => {
+    if (clubs[id]) clubs[id].league = 'j2-league';
+  });
+  j2Promoted.forEach(id => {
+    if (clubs[id]) clubs[id].league = 'j1-league';
+  });
+  j2Relegated.forEach(id => {
+    if (clubs[id]) clubs[id].league = 'j3-league';
+  });
+  j3Promoted.forEach(id => {
+    if (clubs[id]) clubs[id].league = 'j2-league';
   });
 
-  // Check players consistency with clubs
-  Object.values(state.players).forEach(p => {
-    if (p.clubId && state.clubs[p.clubId]) {
-      const club = state.clubs[p.clubId];
-      if (!club.playerIds.includes(p.id)) {
-        club.playerIds.push(p.id);
-      }
-    }
-  });
+  const news: NewsItem = {
+    id: `news_j_prom_rel_${Date.now()}`,
+    date: state.currentDate,
+    headline: '【Jリーグ昇降格決定】シーズン終了に伴うJ1⇄J2、J2⇄J3の入れ替えが決定！',
+    body: `シーズン終了に伴い昇格・降格クラブが確定しました。\n・J1昇格: ${j2Promoted.map(id => clubs[id]?.name).join('、') || '該当クラブ'}\n・J2降格: ${j1Relegated.map(id => clubs[id]?.name).join('、') || '該当クラブ'}\n・J2昇格: ${j3Promoted.map(id => clubs[id]?.name).join('、') || '該当クラブ'}\n・J3降格: ${j2Relegated.map(id => clubs[id]?.name).join('、') || '該当クラブ'}`,
+    category: 'tournament',
+    importance: 'high'
+  };
 
   return {
-    isValid: issues.length === 0,
-    issues
+    state: {
+      ...state,
+      clubs
+    },
+    news
   };
 }
 
@@ -392,7 +400,6 @@ export function fastForwardUntil(
     const res = advanceOneDay(currentState);
     currentState = res.updatedState;
 
-    // Check stop conditions
     if (res.hasUserMatchToday) {
       return res;
     }

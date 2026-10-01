@@ -1943,9 +1943,12 @@ export const ALL_116_CLUBS: Club[] = [
 
   ];
 
-export const ALL_CLUBS = ALL_116_CLUBS;
+import { ALL_60_JLEAGUE_CLUBS } from './jLeagueData';
 
-export const CLUBS_BY_ID: Record<string, Club> = ALL_116_CLUBS.reduce((acc, c) => {
+export const ALL_COMBINED_CLUBS: Club[] = [...ALL_116_CLUBS, ...ALL_60_JLEAGUE_CLUBS];
+export const ALL_CLUBS = ALL_COMBINED_CLUBS;
+
+export const CLUBS_BY_ID: Record<string, Club> = ALL_COMBINED_CLUBS.reduce((acc, c) => {
   acc[c.id] = c;
   return acc;
 }, {} as Record<string, Club>);
