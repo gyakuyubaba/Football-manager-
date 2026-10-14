@@ -138,6 +138,32 @@ export const FORMATION_TEMPLATES: Record<FormationName, FormationSlot[]> = {
     { position: 'LM', pitchX: 16, pitchY: 42 },
     { position: 'ST', pitchX: 50, pitchY: 16 }
   ],
+  '4-1-3-2': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RB', pitchX: 85, pitchY: 76 },
+    { position: 'CB', pitchX: 63, pitchY: 80 },
+    { position: 'CB', pitchX: 37, pitchY: 80 },
+    { position: 'LB', pitchX: 15, pitchY: 76 },
+    { position: 'CDM', pitchX: 50, pitchY: 64 },
+    { position: 'RM', pitchX: 84, pitchY: 44 },
+    { position: 'CAM', pitchX: 50, pitchY: 40 },
+    { position: 'LM', pitchX: 16, pitchY: 44 },
+    { position: 'ST', pitchX: 60, pitchY: 18 },
+    { position: 'ST', pitchX: 40, pitchY: 18 }
+  ],
+  '4-5-1': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RB', pitchX: 85, pitchY: 76 },
+    { position: 'CB', pitchX: 63, pitchY: 80 },
+    { position: 'CB', pitchX: 37, pitchY: 80 },
+    { position: 'LB', pitchX: 15, pitchY: 76 },
+    { position: 'CDM', pitchX: 50, pitchY: 66 },
+    { position: 'RM', pitchX: 86, pitchY: 46 },
+    { position: 'CM', pitchX: 64, pitchY: 50 },
+    { position: 'CM', pitchX: 36, pitchY: 50 },
+    { position: 'LM', pitchX: 14, pitchY: 46 },
+    { position: 'ST', pitchX: 50, pitchY: 18 }
+  ],
   '4-2-2-2': [
     { position: 'GK', pitchX: 50, pitchY: 92 },
     { position: 'RB', pitchX: 85, pitchY: 76 },
@@ -307,6 +333,19 @@ export const FORMATION_TEMPLATES: Record<FormationName, FormationSlot[]> = {
     { position: 'ST', pitchX: 50, pitchY: 16 },
     { position: 'LW', pitchX: 20, pitchY: 24 }
   ],
+  '5-2-2-1': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RWB', pitchX: 88, pitchY: 68 },
+    { position: 'CB', pitchX: 68, pitchY: 80 },
+    { position: 'CB', pitchX: 50, pitchY: 84 },
+    { position: 'CB', pitchX: 32, pitchY: 80 },
+    { position: 'LWB', pitchX: 12, pitchY: 68 },
+    { position: 'CM', pitchX: 62, pitchY: 54 },
+    { position: 'CM', pitchX: 38, pitchY: 54 },
+    { position: 'CAM', pitchX: 66, pitchY: 34 },
+    { position: 'CAM', pitchX: 34, pitchY: 34 },
+    { position: 'ST', pitchX: 50, pitchY: 16 }
+  ],
   '5-3-1-1': [
     { position: 'GK', pitchX: 50, pitchY: 92 },
     { position: 'RWB', pitchX: 88, pitchY: 70 },
@@ -319,6 +358,163 @@ export const FORMATION_TEMPLATES: Record<FormationName, FormationSlot[]> = {
     { position: 'CM', pitchX: 30, pitchY: 52 },
     { position: 'CAM', pitchX: 50, pitchY: 34 },
     { position: 'ST', pitchX: 50, pitchY: 16 }
+  ],
+
+  // =========================================================================
+  // 【変則フォーメーション (Requirement 10: 各配置でピッチ座標が明確に異なる)】
+  // =========================================================================
+  '非対称4-3-3': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RB', pitchX: 86, pitchY: 74 },
+    { position: 'CB', pitchX: 64, pitchY: 80 },
+    { position: 'CB', pitchX: 38, pitchY: 80 },
+    { position: 'LB', pitchX: 14, pitchY: 70 },
+    { position: 'CDM', pitchX: 50, pitchY: 62 },
+    { position: 'CM', pitchX: 66, pitchY: 54 },
+    { position: 'CAM', pitchX: 34, pitchY: 42 },
+    { position: 'RW', pitchX: 84, pitchY: 18 },
+    { position: 'ST', pitchX: 48, pitchY: 16 },
+    { position: 'LW', pitchX: 22, pitchY: 28 }
+  ],
+
+  '非対称4-2-3-1': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RB', pitchX: 86, pitchY: 78 },
+    { position: 'CB', pitchX: 65, pitchY: 80 },
+    { position: 'CB', pitchX: 38, pitchY: 80 },
+    { position: 'LWB', pitchX: 14, pitchY: 62 },
+    { position: 'CDM', pitchX: 62, pitchY: 64 },
+    { position: 'CDM', pitchX: 40, pitchY: 60 },
+    { position: 'CAM', pitchX: 52, pitchY: 38 },
+    { position: 'RW', pitchX: 86, pitchY: 26 },
+    { position: 'CAM', pitchX: 30, pitchY: 34 },
+    { position: 'ST', pitchX: 50, pitchY: 16 }
+  ],
+
+  '偽SB型4-3-3': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'CDM', pitchX: 64, pitchY: 60 },
+    { position: 'CB', pitchX: 68, pitchY: 80 },
+    { position: 'CB', pitchX: 40, pitchY: 80 },
+    { position: 'LB', pitchX: 16, pitchY: 74 },
+    { position: 'CDM', pitchX: 42, pitchY: 62 },
+    { position: 'CAM', pitchX: 68, pitchY: 38 },
+    { position: 'CM', pitchX: 32, pitchY: 46 },
+    { position: 'RW', pitchX: 84, pitchY: 22 },
+    { position: 'ST', pitchX: 50, pitchY: 16 },
+    { position: 'LW', pitchX: 18, pitchY: 22 }
+  ],
+
+  '攻撃時3バック化': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'CB', pitchX: 76, pitchY: 80 },
+    { position: 'CB', pitchX: 50, pitchY: 82 },
+    { position: 'CB', pitchX: 24, pitchY: 80 },
+    { position: 'LM', pitchX: 12, pitchY: 44 },
+    { position: 'CDM', pitchX: 60, pitchY: 62 },
+    { position: 'CDM', pitchX: 40, pitchY: 62 },
+    { position: 'RM', pitchX: 88, pitchY: 44 },
+    { position: 'CAM', pitchX: 50, pitchY: 36 },
+    { position: 'ST', pitchX: 60, pitchY: 18 },
+    { position: 'ST', pitchX: 40, pitchY: 18 }
+  ],
+
+  '守備時5バック化': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RWB', pitchX: 86, pitchY: 78 },
+    { position: 'CB', pitchX: 68, pitchY: 82 },
+    { position: 'CB', pitchX: 50, pitchY: 84 },
+    { position: 'CB', pitchX: 32, pitchY: 82 },
+    { position: 'LWB', pitchX: 14, pitchY: 78 },
+    { position: 'RM', pitchX: 82, pitchY: 52 },
+    { position: 'CM', pitchX: 60, pitchY: 56 },
+    { position: 'CM', pitchX: 40, pitchY: 56 },
+    { position: 'LM', pitchX: 18, pitchY: 52 },
+    { position: 'ST', pitchX: 50, pitchY: 22 }
+  ],
+
+  'ダイヤモンド型4-4-2': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RB', pitchX: 85, pitchY: 76 },
+    { position: 'CB', pitchX: 63, pitchY: 80 },
+    { position: 'CB', pitchX: 37, pitchY: 80 },
+    { position: 'LB', pitchX: 15, pitchY: 76 },
+    { position: 'CDM', pitchX: 50, pitchY: 65 },
+    { position: 'CM', pitchX: 70, pitchY: 52 },
+    { position: 'CM', pitchX: 30, pitchY: 52 },
+    { position: 'CAM', pitchX: 50, pitchY: 36 },
+    { position: 'ST', pitchX: 60, pitchY: 18 },
+    { position: 'ST', pitchX: 40, pitchY: 18 }
+  ],
+
+  'フラット型4-5-1': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RB', pitchX: 85, pitchY: 78 },
+    { position: 'CB', pitchX: 63, pitchY: 80 },
+    { position: 'CB', pitchX: 37, pitchY: 80 },
+    { position: 'LB', pitchX: 15, pitchY: 78 },
+    { position: 'RM', pitchX: 86, pitchY: 48 },
+    { position: 'CM', pitchX: 68, pitchY: 50 },
+    { position: 'CM', pitchX: 50, pitchY: 50 },
+    { position: 'CM', pitchX: 32, pitchY: 50 },
+    { position: 'LM', pitchX: 14, pitchY: 48 },
+    { position: 'ST', pitchX: 50, pitchY: 18 }
+  ],
+
+  '2トップ＋トップ下型': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RB', pitchX: 85, pitchY: 76 },
+    { position: 'CB', pitchX: 63, pitchY: 80 },
+    { position: 'CB', pitchX: 37, pitchY: 80 },
+    { position: 'LB', pitchX: 15, pitchY: 76 },
+    { position: 'CM', pitchX: 70, pitchY: 54 },
+    { position: 'CDM', pitchX: 50, pitchY: 62 },
+    { position: 'CM', pitchX: 30, pitchY: 54 },
+    { position: 'CAM', pitchX: 50, pitchY: 34 },
+    { position: 'ST', pitchX: 58, pitchY: 16 },
+    { position: 'ST', pitchX: 42, pitchY: 16 }
+  ],
+
+  '中央密集型': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'CB', pitchX: 70, pitchY: 80 },
+    { position: 'CB', pitchX: 50, pitchY: 84 },
+    { position: 'CB', pitchX: 30, pitchY: 80 },
+    { position: 'RWB', pitchX: 88, pitchY: 56 },
+    { position: 'LWB', pitchX: 12, pitchY: 56 },
+    { position: 'CDM', pitchX: 62, pitchY: 62 },
+    { position: 'CDM', pitchX: 38, pitchY: 62 },
+    { position: 'CAM', pitchX: 64, pitchY: 38 },
+    { position: 'CAM', pitchX: 36, pitchY: 38 },
+    { position: 'CF', pitchX: 50, pitchY: 18 }
+  ],
+
+  '両ウイング高位置型': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RB', pitchX: 85, pitchY: 76 },
+    { position: 'CB', pitchX: 63, pitchY: 80 },
+    { position: 'CB', pitchX: 37, pitchY: 80 },
+    { position: 'LB', pitchX: 15, pitchY: 76 },
+    { position: 'CDM', pitchX: 50, pitchY: 60 },
+    { position: 'CM', pitchX: 66, pitchY: 46 },
+    { position: 'CM', pitchX: 34, pitchY: 46 },
+    { position: 'RW', pitchX: 86, pitchY: 14 },
+    { position: 'CF', pitchX: 50, pitchY: 16 },
+    { position: 'LW', pitchX: 14, pitchY: 14 }
+  ],
+
+  '片側ウイング偏重型': [
+    { position: 'GK', pitchX: 50, pitchY: 92 },
+    { position: 'RB', pitchX: 84, pitchY: 78 },
+    { position: 'CB', pitchX: 62, pitchY: 80 },
+    { position: 'CB', pitchX: 38, pitchY: 80 },
+    { position: 'LB', pitchX: 16, pitchY: 68 },
+    { position: 'CDM', pitchX: 50, pitchY: 64 },
+    { position: 'CM', pitchX: 28, pitchY: 48 },
+    { position: 'CAM', pitchX: 36, pitchY: 34 },
+    { position: 'LW', pitchX: 18, pitchY: 22 },
+    { position: 'ST', pitchX: 50, pitchY: 18 },
+    { position: 'RW', pitchX: 88, pitchY: 18 }
   ]
 };
 
@@ -327,16 +523,18 @@ export function getPositionFitOvr(player: Player, targetPosition: Position): {
   effectiveOvr: number;
   penalty: number;
   fitGrade: 'S' | 'A' | 'B' | 'C' | 'D';
+  fitSymbol: '◎' | '○' | '△' | '✕';
+  description: string;
 } {
   // 1. Natural match
   if (player.position === targetPosition) {
-    return { effectiveOvr: player.ovr, penalty: 0, fitGrade: 'S' };
+    return { effectiveOvr: player.ovr, penalty: 0, fitGrade: 'S', fitSymbol: '◎', description: '本職・最適正' };
   }
 
   // 2. Listed in alternative positions
   if (player.altPositions && player.altPositions.includes(targetPosition)) {
     const penalty = 2;
-    return { effectiveOvr: Math.max(40, player.ovr - penalty), penalty, fitGrade: 'A' };
+    return { effectiveOvr: Math.max(40, player.ovr - penalty), penalty, fitGrade: 'A', fitSymbol: '◎', description: 'サブ適性・高い適応力' };
   }
 
   // 3. Closely related tactical roles
@@ -360,7 +558,7 @@ export function getPositionFitOvr(player: Player, targetPosition: Position): {
 
   if (relatedGroups[player.position]?.includes(targetPosition)) {
     const penalty = 4;
-    return { effectiveOvr: Math.max(40, player.ovr - penalty), penalty, fitGrade: 'B' };
+    return { effectiveOvr: Math.max(40, player.ovr - penalty), penalty, fitGrade: 'B', fitSymbol: '○', description: '類似ポジション・起用可能' };
   }
 
   // 4. Same field category (Defenders, Midfielders, Forwards)
@@ -372,12 +570,12 @@ export function getPositionFitOvr(player: Player, targetPosition: Position): {
       (isMid(player.position) && isMid(targetPosition)) ||
       (isFwd(player.position) && isFwd(targetPosition))) {
     const penalty = 8;
-    return { effectiveOvr: Math.max(40, player.ovr - penalty), penalty, fitGrade: 'C' };
+    return { effectiveOvr: Math.max(40, player.ovr - penalty), penalty, fitGrade: 'C', fitSymbol: '△', description: '適性外・能力低下あり' };
   }
 
   // 5. Severe positional mismatch (e.g. ST at CB, or outfield at GK)
   const penalty = targetPosition === 'GK' || player.position === 'GK' ? 32 : 18;
-  return { effectiveOvr: Math.max(35, player.ovr - penalty), penalty, fitGrade: 'D' };
+  return { effectiveOvr: Math.max(35, player.ovr - penalty), penalty, fitGrade: 'D', fitSymbol: '✕', description: '著しい不適性・大幅減衰' };
 }
 
 // Generate updated tactics when changing formation

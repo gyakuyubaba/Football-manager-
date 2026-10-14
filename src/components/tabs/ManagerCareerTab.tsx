@@ -444,10 +444,10 @@ export const ManagerCareerTab: React.FC<Props> = ({
                 <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                 <div>
                   <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                    全16項目 システム検証・自動診断テスト
+                    システム検証・自動診断テスト（全20項目）
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    怪我選手の出場禁止、疲労と負傷リスク、得点バランス、選手重複チェック、Jリーグ所属整合性など16項目を包括検証
+                    スタメン入替、怪我頻度抑制、月末全試合シミュレーション、ベンチ外整合性、J1リーグ所属、ユース育成など包括検証
                   </p>
                 </div>
               </div>
@@ -457,7 +457,7 @@ export const ManagerCareerTab: React.FC<Props> = ({
                 disabled={isRunningTests}
                 className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] disabled:opacity-50 text-slate-950 text-xs font-black shadow-lg shadow-emerald-500/20 cursor-pointer shrink-0 transition-all flex items-center justify-center gap-1.5"
               >
-                {isRunningTests ? '検証中...' : 'テストを実行する（全16項目）'}
+                {isRunningTests ? '検証中...' : 'テストを実行する（全20項目）'}
               </button>
             </div>
 
@@ -466,7 +466,7 @@ export const ManagerCareerTab: React.FC<Props> = ({
                 <div className="flex items-center justify-between bg-emerald-950/40 border border-emerald-500/40 p-3 rounded-2xl">
                   <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span>検証結果: 全16項目中 {testResults.filter(r => r.passed).length} 項目 合格 (100% PASS)</span>
+                    <span>検証結果: 全{testResults.length}項目中 {testResults.filter(r => r.passed).length} 項目 合格 (100% PASS)</span>
                   </div>
                   <span className="text-[10px] font-mono text-emerald-400 bg-emerald-900/60 px-2 py-0.5 rounded">ALL PASSED</span>
                 </div>

@@ -1,5 +1,6 @@
-import { GameWorldState, MatchFixture, StandingsRow, LeagueKey, NewsItem, Player } from '../types/game';
-import { simulateFullMatch, calculatePlayerInjuryRisk, INJURY_VARIETIES } from './matchEngine';
+import { GameWorldState, MatchFixture, StandingsRow, LeagueKey, NewsItem, Player, Club, DEFAULT_DIFFICULTY_SETTINGS, PeriodSummary } from '../types/game';
+import { ENABLE_J_LEAGUE } from '../data/clubsData';
+import { simulateFullMatch, calculatePlayerInjuryRisk, INJURY_VARIETIES, getRandomWeightedInjury } from './matchEngine';
 import { simulateAITransfers } from './transferEngine';
 import { getDefaultTacticsForClub } from '../data/squadPopulator';
 
@@ -14,6 +15,19 @@ export function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr);
   d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];
+}
+
+// Accurate age calculation based on birth date string and current game date (Requirement 9)
+export function calculateAge(birthDateStr: string, currentDateStr: string): number {
+  if (!birthDateStr) return 25;
+  const [bYear, bMonth, bDay] = birthDateStr.split('-').map(Number);
+  const [cYear, cMonth, cDay] = currentDateStr.split('-').map(Number);
+  if (!bYear || !bMonth || !bDay || !cYear || !cMonth || !cDay) return 25;
+  let age = cYear - bYear;
+  if (cMonth < bMonth || (cMonth === bMonth && cDay < bDay)) {
+    age--;
+  }
+  return Math.max(15, age);
 }
 
 // Check if a date falls within transfer windows (Summer: July 1 - Aug 31, Winter: Jan 1 - Jan 31)
@@ -48,6 +62,8 @@ export interface DayProgressionResult {
   stoppedReason?: string;
   hasUserMatchToday?: boolean;
   userMatchFixture?: MatchFixture;
+  userSimulatedFixture?: MatchFixture;
+  periodSummary?: PeriodSummary;
 }
 
 // -------------------------------------------------------------
@@ -72,6 +88,8 @@ export function applyMatchResultToWorld(
   };
   if (idx !== -1) {
     fixtures[idx] = finalFixture;
+  } else {
+    fixtures.push(finalFixture);
   }
 
   // 2. Update standings if this is a league fixture
@@ -95,16 +113,84 @@ export function applyMatchResultToWorld(
     });
   }
 
+  // 4. Knockout Cup Tournament Advancement (Requirement 9)
+  const isKnockout = finalFixture.competition.includes('cup') ||
+                     ['copa-del-rey', 'coppa-italia', 'dfb-pokal', 'coupe-de-france', 'ucl', 'uel', 'pre-season'].includes(finalFixture.competition);
+
+  let updatedNews = [...state.news];
+
+  if (isKnockout && finalFixture.homeScore !== undefined && finalFixture.awayScore !== undefined) {
+    let winnerId: string;
+    let loserId: string;
+
+    if (finalFixture.homeScore > finalFixture.awayScore) {
+      winnerId = finalFixture.homeClubId;
+      loserId = finalFixture.awayClubId;
+    } else if (finalFixture.awayScore > finalFixture.homeScore) {
+      winnerId = finalFixture.awayClubId;
+      loserId = finalFixture.homeClubId;
+    } else if (finalFixture.penaltyShootout) {
+      winnerId = finalFixture.penaltyShootout.homeScore > finalFixture.penaltyShootout.awayScore ? finalFixture.homeClubId : finalFixture.awayClubId;
+      loserId = winnerId === finalFixture.homeClubId ? finalFixture.awayClubId : finalFixture.homeClubId;
+    } else {
+      winnerId = finalFixture.homeClubId;
+      loserId = finalFixture.awayClubId;
+    }
+
+    const winnerClub = state.clubs[winnerId];
+    const loserClub = state.clubs[loserId];
+
+    // Find if there is a next round fixture in this competition that needs teams
+    const nextRoundFixture = fixtures.find(f => 
+      f.competition === finalFixture.competition && 
+      f.status === 'upcoming' && 
+      f.date > finalFixture.date &&
+      (!f.homeClubId || !f.awayClubId || f.homeClubId === 'tbd' || f.awayClubId === 'tbd')
+    );
+
+    if (nextRoundFixture) {
+      if (!nextRoundFixture.homeClubId || nextRoundFixture.homeClubId === 'tbd') {
+        nextRoundFixture.homeClubId = winnerId;
+      } else if (!nextRoundFixture.awayClubId || nextRoundFixture.awayClubId === 'tbd') {
+        nextRoundFixture.awayClubId = winnerId;
+      }
+    }
+
+    // Add tournament progression news
+    const isUserInvolved = winnerId === state.userClubId || loserId === state.userClubId;
+    const isWinnerUser = winnerId === state.userClubId;
+
+    const cupHeadline = isUserInvolved
+      ? (isWinnerUser
+          ? `【カップ戦勝利】${winnerClub?.name || 'チーム'}が${loserClub?.name || '対戦相手'}を撃破し次ラウンド進出決定！`
+          : `【カップ戦敗退】${loserClub?.name || 'チーム'}、${winnerClub?.name || '相手'}に惜敗しトーナメント敗退決定`)
+      : `【${finalFixture.competitionName}】${winnerClub?.name || ''}が${finalFixture.homeScore}-${finalFixture.awayScore}で次ラウンド進出`;
+
+    updatedNews.unshift({
+      id: `news_cup_${Date.now()}_${finalFixture.id}`,
+      date: finalFixture.date || state.currentDate,
+      headline: cupHeadline,
+      body: `${finalFixture.competitionName}の熱戦。${winnerClub?.name || '勝者'}が${loserClub?.name || '敗者'}との激闘を制し、見事次のトーナメントラウンドへの切符を掴み取りました。`,
+      category: 'tournament',
+      relatedClubId: winnerId,
+      importance: isUserInvolved ? 'high' : 'medium'
+    });
+  }
+
   return {
     ...state,
     fixtures,
     standings,
-    players
+    players,
+    news: updatedNews
   };
 }
 
-// Advance exactly 1 day
-export function advanceOneDay(currentState: GameWorldState): DayProgressionResult {
+// Advance exactly 1 day (Requirement 3: autoSimulateUserMatch for month skip & 7-day skip)
+export function advanceOneDay(
+  currentState: GameWorldState, 
+  autoSimulateUserMatch: boolean = false
+): DayProgressionResult {
   const nextDate = addDays(currentState.currentDate, 1);
   let state: GameWorldState = {
     ...currentState,
@@ -118,6 +204,20 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
   // 1. Fatigue Recovery & Daily Health check for players (Requirement 1 & 2)
   const updatedPlayers = { ...state.players };
   let injuryNews: NewsItem | null = null;
+  const todayFixtures = state.fixtures.filter(f => f.date === nextDate);
+
+  // Exact Birthday & Age Recalculation (Requirement 9: 全選手が毎年確実に歳を取る)
+  Object.values(updatedPlayers).forEach(p => {
+    if (!p.birthDate) {
+      const bMonth = ((p.shirtNumber * 5 + p.name.length) % 12) + 1;
+      const bDay = ((p.shirtNumber * 7 + p.name.length * 3) % 28) + 1;
+      p.birthDate = `${2026 - (p.age || 25)}-${String(bMonth).padStart(2, '0')}-${String(bDay).padStart(2, '0')}`;
+    }
+    const exactAge = calculateAge(p.birthDate, nextDate);
+    if (p.age !== exactAge) {
+      p.age = exactAge;
+    }
+  });
 
   Object.values(updatedPlayers).forEach(p => {
     // Natural fatigue recovery (+8 to +16% per rest day)
@@ -141,7 +241,7 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
       }
     }
 
-    // --- Injury state maintenance & recovery check (Requirement 1: 日付を進めても怪我状態を維持) ---
+    // --- Injury state maintenance & recovery check ---
     const isInjured = p.injuryStatus === 'INJURED' || p.injury?.isInjured;
     if (isInjured) {
       if (p.injuryDaysRemaining !== undefined && p.injuryDaysRemaining > 0) {
@@ -165,7 +265,7 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
         p.injuryType = undefined;
         p.injuryDaysRemaining = 0;
 
-        if (p.clubId === state.userClubId) {
+        if (p.clubId === state.userClubId && !autoSimulateUserMatch) {
           stoppedReason = `【戦列復帰】主力選手の${p.name}が怪我から全体練習に完全合流しました！`;
         }
       } else {
@@ -177,42 +277,51 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
         }
       }
     } else {
-      // Training injury risk with fatigue scaling (Requirement 2)
-      const trainingRisk = calculatePlayerInjuryRisk(p, 30, '標準的') * 0.25;
-      if (Math.random() < trainingRisk) {
-        const chosenInj = INJURY_VARIETIES[Math.floor(Math.random() * INJURY_VARIETIES.length)];
-        const returnDate = addDays(nextDate, chosenInj.days);
-        p.injury = {
-          isInjured: true,
-          type: `${chosenInj.name} (練習中)`,
-          recoveryDays: chosenInj.days,
-          returnDate
-        };
-        p.injuryStatus = 'INJURED';
-        p.injuryStartDate = nextDate;
-        p.injuryReturnDate = returnDate;
-        p.injuryType = `${chosenInj.name} (練習中)`;
-        p.injuryDaysRemaining = chosenInj.days;
-        p.squadStatus = 'OUT_OF_SQUAD';
-
-        if (p.clubId === state.userClubId) {
-          stoppedReason = `【緊急速報】${p.name}が練習中に負傷しました。(全治約${chosenInj.days}日・復帰予定: ${returnDate})`;
-          injuryNews = {
-            id: `news_inj_${Date.now()}`,
-            date: nextDate,
-            headline: `【負傷者情報】${state.clubs[state.userClubId]?.name}の${p.name}が練習中に負傷離脱`,
-            body: `チームに痛手。${p.name}が本日のトレーニング中に負傷。メディカルスタッフの初期診断によると全治約${chosenInj.days}日（復帰予定: ${returnDate}）の見込み。試合出場不可のためベンチ外へ移動しました。`,
-            category: 'injury',
-            relatedClubId: state.userClubId,
-            relatedPlayerId: p.id,
-            importance: 'high'
+      // Training injury check (Requirement 2: 試合日は試合シミュレーション側で判定し、二重加算を完全防止)
+      const hasMatchToday = todayFixtures.some(f => f.homeClubId === p.clubId || f.awayClubId === p.clubId);
+      if (!hasMatchToday) {
+        const diffSettings = state.difficultySettings || DEFAULT_DIFFICULTY_SETTINGS;
+        const injuryRateMod = diffSettings.injuryFrequency === 'low' ? 0.35 : diffSettings.injuryFrequency === 'high' ? 1.4 : 0.70;
+        const trainingRisk = calculatePlayerInjuryRisk(p, 30, '標準的', false, diffSettings.injuryFrequency) * 0.12 * injuryRateMod;
+        if (Math.random() < trainingRisk) {
+          const chosenInj = getRandomWeightedInjury();
+          const returnDate = addDays(nextDate, chosenInj.days);
+          p.injury = {
+            isInjured: true,
+            type: `${chosenInj.name} (練習中)`,
+            recoveryDays: chosenInj.days,
+            returnDate
           };
+          p.injuryStatus = 'INJURED';
+          p.injuryStartDate = nextDate;
+          p.injuryReturnDate = returnDate;
+          p.injuryType = `${chosenInj.name} (練習中)`;
+          p.injuryDaysRemaining = chosenInj.days;
+          p.squadStatus = 'OUT_OF_SQUAD';
+
+          if (p.clubId === state.userClubId) {
+            if (!autoSimulateUserMatch) {
+              stoppedReason = `【緊急速報】${p.name}が練習中に負傷しました。(全治約${chosenInj.days}日・復帰予定: ${returnDate})`;
+            }
+            injuryNews = {
+              id: `news_inj_${Date.now()}_${p.id}`,
+              date: nextDate,
+              headline: `【負傷者情報】${state.clubs[state.userClubId]?.name}の${p.name}が練習中に負傷離脱`,
+              body: `チームに痛手。${p.name}が本日のトレーニング中に負傷。メディカルスタッフの初期診断によると全治約${chosenInj.days}日（復帰予定: ${returnDate}）の見込み。試合出場不可のためベンチ外へ移動しました。`,
+              category: 'injury',
+              relatedClubId: state.userClubId,
+              relatedPlayerId: p.id,
+              importance: 'high'
+            };
+          }
         }
       }
     }
 
-    // Young player gradual growth (age <= 21, potential > ovr)
-    if (p.age <= 21 && p.potential > p.ovr && Math.random() < 0.02) {
+    // Young player gradual growth scaled by playerGrowthRate (Requirement 13)
+    const diffSettings = state.difficultySettings || DEFAULT_DIFFICULTY_SETTINGS;
+    const growthRateMod = diffSettings.playerGrowthRate === 'slow' ? 0.01 : diffSettings.playerGrowthRate === 'fast' ? 0.045 : 0.02;
+    if (p.age <= 21 && p.potential > p.ovr && Math.random() < growthRateMod) {
       p.ovr += 1;
       p.pace = Math.min(99, p.pace + 1);
       p.passing = Math.min(99, p.passing + 1);
@@ -268,7 +377,7 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
           importance: 'high'
         });
 
-        if (loanClubId === userClubId || parentClubId === userClubId) {
+        if ((loanClubId === userClubId || parentClubId === userClubId) && !autoSimulateUserMatch) {
           stoppedReason = `【レンタル移籍終了】${p.name}の期限付き移籍期間が満了し、${parentClub.name}への復帰手続きが完了しました。`;
         }
       }
@@ -287,52 +396,73 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
   state = simulateAITransfers(state);
 
   // -------------------------------------------------------------
-  // 【10. 全試合消化 (AIクラブもスケジュール通りに全試合を進行)】
+  // 【1 & 3. 試合シミュレーション：ユーザー戦・AI戦の完全処理】
   // -------------------------------------------------------------
-  const todayFixtures = state.fixtures.filter(f => f.date === nextDate);
-  const userFixture = todayFixtures.find(f => f.homeClubId === state.userClubId || f.awayClubId === state.userClubId);
+  const userFixture = todayFixtures.find(f => (f.homeClubId === state.userClubId || f.awayClubId === state.userClubId) && f.status === 'upcoming');
+  let userSimulatedFixture: MatchFixture | undefined;
 
-  // If there's a match involving the user's club today, STOP for match day!
-  if (userFixture && userFixture.status === 'upcoming') {
-    return {
-      updatedState: state,
-      stoppedReason: `【MATCH DAY】本日 ${state.clubs[userFixture.awayClubId]?.shortName || '対戦相手'} 戦が予定されています！`,
-      hasUserMatchToday: true,
-      userMatchFixture: userFixture
-    };
-  }
-
-  // Simulate all AI fixtures scheduled for today across all competitions
-  todayFixtures.forEach(f => {
-    if (f.status === 'upcoming') {
-      const homeClub = state.clubs[f.homeClubId];
-      const awayClub = state.clubs[f.awayClubId];
+  // Handle User Match
+  if (userFixture) {
+    if (!autoSimulateUserMatch) {
+      // Manual match day stop
+      const oppClubId = userFixture.homeClubId === state.userClubId ? userFixture.awayClubId : userFixture.homeClubId;
+      return {
+        updatedState: state,
+        stoppedReason: `【MATCH DAY】本日 ${state.clubs[oppClubId]?.shortName || state.clubs[oppClubId]?.name || '対戦相手'} 戦が予定されています！`,
+        hasUserMatchToday: true,
+        userMatchFixture: userFixture
+      };
+    } else {
+      // Fast forward auto-simulate user match via full match engine (Requirement 3)
+      const homeClub = state.clubs[userFixture.homeClubId];
+      const awayClub = state.clubs[userFixture.awayClubId];
       if (homeClub && awayClub) {
-        const homeTac = getDefaultTacticsForClub(homeClub, state.players);
-        const awayTac = getDefaultTacticsForClub(awayClub, state.players);
-        const simRes = simulateFullMatch(f, homeClub, awayClub, homeTac, awayTac, state.players);
+        const isUserHome = userFixture.homeClubId === state.userClubId;
+        const homeTac = isUserHome ? state.tactics : getDefaultTacticsForClub(homeClub, state.players);
+        const awayTac = !isUserHome ? state.tactics : getDefaultTacticsForClub(awayClub, state.players);
+        const simRes = simulateFullMatch(userFixture, homeClub, awayClub, homeTac, awayTac, state.players);
         state = applyMatchResultToWorld(state, simRes.fixture, simRes.updatedPlayers);
+        userSimulatedFixture = simRes.fixture;
       }
     }
+  }
+
+  // Simulate all AI fixtures scheduled for today (or pending up to nextDate) across all competitions (Requirement 1 & 3)
+  const pendingFixtures = state.fixtures.filter(f => f.date <= nextDate && f.status === 'upcoming' && !f.isUserMatch);
+  pendingFixtures.forEach(f => {
+    const homeClub = state.clubs[f.homeClubId];
+    const awayClub = state.clubs[f.awayClubId];
+    if (homeClub && awayClub) {
+      const homeTac = getDefaultTacticsForClub(homeClub, state.players);
+      const awayTac = getDefaultTacticsForClub(awayClub, state.players);
+      const simRes = simulateFullMatch(f, homeClub, awayClub, homeTac, awayTac, state.players);
+      state = applyMatchResultToWorld(state, simRes.fixture, simRes.updatedPlayers);
+    }
   });
+
+  // Re-synchronize standings from match records (Requirement 1 & 11)
+  state.standings = rebuildStandingsFromMatchResults(state.fixtures, state.clubs, state.standings);
 
   // End of Season Revenue & Promotions / Relegations check (May 25)
   if (nextDate === '2027-05-25') {
     const promRel = processSeasonEndPromotionsAndRelegations(state);
     state = promRel.state;
     state.news = [promRel.news, ...state.news];
-    stoppedReason = '【シーズン全日程終了】J1/J2/J3の昇格・降格クラブおよび欧州カップ戦出場クラブが決定しました！';
+    if (!autoSimulateUserMatch) {
+      stoppedReason = '【シーズン全日程終了】J1/J2/J3の昇格・降格クラブおよび欧州カップ戦出場クラブが決定しました！';
+    }
   }
 
   // Transfer window deadline day check
-  if (nextDate === '2026-08-31' || nextDate === '2026-01-31') {
+  if ((nextDate === '2026-08-31' || nextDate === '2026-01-31') && !autoSimulateUserMatch) {
     state.showDeadlineSummary = true;
     stoppedReason = '【移籍市場最終日】夏の移籍ウィンドウのデッドラインデイを迎えました！';
   }
 
   return {
     updatedState: state,
-    stoppedReason
+    stoppedReason,
+    userSimulatedFixture
   };
 }
 
@@ -340,6 +470,19 @@ export function advanceOneDay(currentState: GameWorldState): DayProgressionResul
 // 【7. Jリーグ昇降格システム (SEASON END PROMOTION & RELEGATION)】
 // -------------------------------------------------------------
 export function processSeasonEndPromotionsAndRelegations(state: GameWorldState): { state: GameWorldState; news: NewsItem } {
+  if (!ENABLE_J_LEAGUE) {
+    return {
+      state,
+      news: {
+        id: `news_season_end_${Date.now()}`,
+        date: state.currentDate,
+        headline: '【欧州シーズン終了】各リーグ順位および欧州大会出場権確定',
+        body: '2026/27シーズン全日程が終了し、リーグタイトルおよび欧州大会出場権が確定しました。',
+        category: 'tournament',
+        importance: 'high'
+      }
+    };
+  }
   const clubs = { ...state.clubs };
   const j1Rows = state.standings['j1-league'] || [];
   const j2Rows = state.standings['j2-league'] || [];
@@ -386,7 +529,7 @@ export function processSeasonEndPromotionsAndRelegations(state: GameWorldState):
   };
 }
 
-// Fast forward until target condition
+// Fast forward until target condition (Requirement 3: 月末まで進める機能を完全修正)
 export function fastForwardUntil(
   initialState: GameWorldState,
   targetType: 'next_match' | 'transfer_deadline' | 'days_7' | 'end_of_month'
@@ -394,48 +537,107 @@ export function fastForwardUntil(
   let currentState = initialState;
   const maxDays = 90; // Safety cap
   let daysCount = 0;
+  const userMatchesPlayed: MatchFixture[] = [];
+  let injuriesCount = 0;
+
+  // Auto simulate user matches during long skips (end_of_month, days_7, transfer_deadline)
+  const autoSimulate = targetType !== 'next_match';
+  const startMonth = initialState.currentDate.split('-')[1];
 
   while (daysCount < maxDays) {
     daysCount++;
-    const res = advanceOneDay(currentState);
+    const res = advanceOneDay(currentState, autoSimulate);
     currentState = res.updatedState;
 
-    if (res.hasUserMatchToday) {
+    if (res.userSimulatedFixture) {
+      userMatchesPlayed.push(res.userSimulatedFixture);
+      const injs = (res.userSimulatedFixture.events || []).filter(e => e.type === 'injury' && e.clubId === initialState.userClubId).length;
+      injuriesCount += injs;
+    }
+
+    if (!autoSimulate && res.hasUserMatchToday) {
       return res;
     }
 
-    if (res.stoppedReason) {
+    if (!autoSimulate && res.stoppedReason) {
       return res;
     }
 
     if (targetType === 'transfer_deadline' && (currentState.currentDate.endsWith('08-31') || currentState.currentDate.endsWith('01-31'))) {
-      return {
-        updatedState: currentState,
-        stoppedReason: '【移籍締切日】移籍ウィンドウ最終日に到達しました。'
-      };
+      break;
     }
 
     if (targetType === 'days_7' && daysCount >= 7) {
-      return {
-        updatedState: currentState,
-        stoppedReason: '1週間（7日間）が経過しました。'
-      };
+      break;
     }
 
     if (targetType === 'end_of_month') {
-      const day = parseInt(currentState.currentDate.split('-')[2], 10);
-      if (day === 28 || day === 30 || day === 31) {
-        return {
-          updatedState: currentState,
-          stoppedReason: '月末に到達しました。'
-        };
+      const currentMonth = currentState.currentDate.split('-')[1];
+      if (currentMonth !== startMonth) {
+        break;
       }
     }
   }
 
+  // Build PeriodSummary for user feedback
+  let wins = 0;
+  let draws = 0;
+  let losses = 0;
+  let goalsFor = 0;
+  let goalsAgainst = 0;
+  let cleanSheets = 0;
+
+  const matchDetails = userMatchesPlayed.map(f => {
+    const isHome = f.homeClubId === initialState.userClubId;
+    const userScore = isHome ? (f.homeScore ?? 0) : (f.awayScore ?? 0);
+    const oppScore = isHome ? (f.awayScore ?? 0) : (f.homeScore ?? 0);
+    const oppClubId = isHome ? f.awayClubId : f.homeClubId;
+    const oppName = currentState.clubs[oppClubId]?.shortName || currentState.clubs[oppClubId]?.name || '対戦相手';
+
+    goalsFor += userScore;
+    goalsAgainst += oppScore;
+    if (oppScore === 0) cleanSheets++;
+
+    let result: 'W' | 'D' | 'L' = 'D';
+    if (userScore > oppScore) { wins++; result = 'W'; }
+    else if (userScore < oppScore) { losses++; result = 'L'; }
+    else { draws++; result = 'D'; }
+
+    return {
+      matchId: f.id,
+      date: f.date,
+      opponentName: oppName,
+      isHome,
+      score: `${userScore} - ${oppScore}`,
+      result
+    };
+  });
+
+  const periodSummary: PeriodSummary = {
+    startDate: initialState.currentDate,
+    endDate: currentState.currentDate,
+    matchesPlayed: userMatchesPlayed.length,
+    userMatchesCount: userMatchesPlayed.length,
+    wins,
+    draws,
+    losses,
+    goalsFor,
+    goalsAgainst,
+    cleanSheets,
+    injuriesOccurred: injuriesCount,
+    matchDetails
+  };
+
+  const stoppedReason = targetType === 'end_of_month'
+    ? `【月末進行完了】${formatDateJP(initialState.currentDate)}から${formatDateJP(currentState.currentDate)}まで進めました（期間中 ${userMatchesPlayed.length}試合を自動シミュレーション）。`
+    : targetType === 'days_7'
+    ? `【1週間進行完了】7日間の日程を進めました（期間中 ${userMatchesPlayed.length}試合を自動シミュレーション）。`
+    : `時間スキップが完了しました。`;
+
   return {
     updatedState: currentState,
-    stoppedReason: '時間スキップが完了しました。'
+    stoppedReason,
+    periodSummary
   };
 }
 
@@ -488,4 +690,128 @@ export function updateStandingsAfterMatch(standings: StandingsRow[], fixture: Ma
     if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff;
     return b.goalsFor - a.goalsFor;
   });
+}
+
+/**
+ * 【Requirement 1 & 11】REBUILD_STANDINGS_FROM_MATCH_RESULTS
+ * 順位表はMatchRecord（終了済み試合結果）から再計算できるようにする。
+ * 全クラブの試合数・勝利・引き分け・敗戦・得点・失点・得失点差・勝点を全大会で整合再構築。
+ */
+export function rebuildStandingsFromMatchResults(
+  fixtures: MatchFixture[],
+  clubs: Record<string, Club>,
+  currentStandings?: Record<string, StandingsRow[]>
+): Record<LeagueKey, StandingsRow[]> {
+  const standingsMap: Record<string, Record<string, StandingsRow>> = {};
+
+  // 1. Initialize clean entries for all clubs across their registered leagues
+  Object.values(clubs).forEach(club => {
+    if (!standingsMap[club.league]) {
+      standingsMap[club.league] = {};
+    }
+    standingsMap[club.league][club.id] = {
+      clubId: club.id,
+      clubName: club.name,
+      played: 0,
+      won: 0,
+      drawn: 0,
+      lost: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      goalDiff: 0,
+      points: 0,
+      form: []
+    };
+  });
+
+  // 2. Aggregate all finished fixtures strictly once
+  fixtures.forEach(fixture => {
+    if (fixture.status === 'finished' && fixture.homeScore !== undefined && fixture.awayScore !== undefined) {
+      const leagueKey = fixture.competition;
+      if (standingsMap[leagueKey]) {
+        const homeRow = standingsMap[leagueKey][fixture.homeClubId];
+        const awayRow = standingsMap[leagueKey][fixture.awayClubId];
+        if (homeRow && awayRow) {
+          homeRow.played += 1;
+          awayRow.played += 1;
+          homeRow.goalsFor += fixture.homeScore;
+          homeRow.goalsAgainst += fixture.awayScore;
+          homeRow.goalDiff += (fixture.homeScore - fixture.awayScore);
+
+          awayRow.goalsFor += fixture.awayScore;
+          awayRow.goalsAgainst += fixture.homeScore;
+          awayRow.goalDiff += (fixture.awayScore - fixture.homeScore);
+
+          if (fixture.homeScore > fixture.awayScore) {
+            homeRow.won += 1;
+            homeRow.points += 3;
+            homeRow.form.push('W');
+            awayRow.lost += 1;
+            awayRow.form.push('L');
+          } else if (fixture.homeScore < fixture.awayScore) {
+            awayRow.won += 1;
+            awayRow.points += 3;
+            homeRow.lost += 1;
+            homeRow.form.push('L');
+            awayRow.form.push('W');
+          } else {
+            homeRow.drawn += 1;
+            homeRow.points += 1;
+            awayRow.drawn += 1;
+            awayRow.points += 1;
+            homeRow.form.push('D');
+            awayRow.form.push('D');
+          }
+        }
+      }
+    }
+  });
+
+  // 3. Format and sort each league table (Points -> GD -> GF -> Alphabetical)
+  const result: Record<LeagueKey, StandingsRow[]> = {} as any;
+  for (const [leagueKey, clubsMap] of Object.entries(standingsMap)) {
+    const rows = Object.values(clubsMap);
+    rows.sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff;
+      if (b.goalsFor !== a.goalsFor) return b.goalsFor - a.goalsFor;
+      return a.clubName.localeCompare(b.clubName);
+    });
+    rows.forEach(r => {
+      r.form = r.form.slice(-5);
+    });
+    result[leagueKey as LeagueKey] = rows;
+  }
+
+  return result;
+}
+
+export const REBUILD_STANDINGS_FROM_MATCH_RESULTS = rebuildStandingsFromMatchResults;
+
+/**
+ * Simulate all pending AI matches on or before a given date and sync standings
+ */
+export function simulatePendingAIFixturesForDate(
+  state: GameWorldState,
+  date: string
+): GameWorldState {
+  let currentState = { ...state };
+  const fixturesToSimulate = currentState.fixtures.filter(
+    f => f.date <= date && f.status === 'upcoming' && !f.isUserMatch
+  );
+
+  fixturesToSimulate.forEach(f => {
+    const homeClub = currentState.clubs[f.homeClubId];
+    const awayClub = currentState.clubs[f.awayClubId];
+    if (homeClub && awayClub) {
+      const homeTac = getDefaultTacticsForClub(homeClub, currentState.players);
+      const awayTac = getDefaultTacticsForClub(awayClub, currentState.players);
+      const simRes = simulateFullMatch(f, homeClub, awayClub, homeTac, awayTac, currentState.players);
+      currentState = applyMatchResultToWorld(currentState, simRes.fixture, simRes.updatedPlayers);
+    }
+  });
+
+  // Synchronize standings
+  currentState.standings = rebuildStandingsFromMatchResults(currentState.fixtures, currentState.clubs, currentState.standings);
+  return currentState;
 }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { GameWorldState, LeagueKey, MatchFixture } from '../../types/game';
+import { ENABLE_J_LEAGUE } from '../../data/clubsData';
 import { formatDateJP } from '../../engine/dateEngine';
 import { Trophy, Calendar, CheckCircle2, Clock } from 'lucide-react';
 
@@ -8,7 +9,7 @@ interface Props {
   onOpenMatch: (fixture: MatchFixture) => void;
 }
 
-const LEAGUE_NAMES: Record<LeagueKey, string> = {
+const ALL_LEAGUE_NAMES: Record<LeagueKey, string> = {
   'premier-league': 'Premier League (イングランド)',
   'laliga': 'LaLiga (スペイン)',
   'bundesliga': 'Bundesliga (ドイツ)',
@@ -18,6 +19,16 @@ const LEAGUE_NAMES: Record<LeagueKey, string> = {
   'j2-league': '明治安田J2リーグ (日本)',
   'j3-league': '明治安田J3リーグ (日本)'
 };
+
+const LEAGUE_NAMES: Partial<Record<LeagueKey, string>> = ENABLE_J_LEAGUE 
+  ? ALL_LEAGUE_NAMES 
+  : {
+      'premier-league': 'Premier League (イングランド)',
+      'laliga': 'LaLiga (スペイン)',
+      'bundesliga': 'Bundesliga (ドイツ)',
+      'serie-a': 'Serie A (イタリア)',
+      'ligue-1': 'Ligue 1 (フランス)'
+    };
 
 export const CompetitionsTab: React.FC<Props> = ({ state, onOpenMatch }) => {
   const userClub = state.userClubId ? state.clubs[state.userClubId] : null;

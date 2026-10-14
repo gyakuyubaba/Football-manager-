@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { GameWorldState, TeamTactics, FormationName, Player, Position, NewsItem } from '../../types/game';
-import { Shield, Users, Activity, Shuffle, Sliders, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Shield, Users, Activity, Shuffle, Sliders, AlertCircle, AlertTriangle, ArrowLeftRight, CheckCircle2, Move, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { PlayerReplacementModal } from '../PlayerReplacementModal';
+import { executePlayerReplacement } from '../../engine/dataValidator';
+import { getPositionFitOvr, FORMATION_TEMPLATES } from '../../engine/tacticsEngine';
 
 interface Props {
   state: GameWorldState;
@@ -11,24 +14,70 @@ interface Props {
 
 const FORMATIONS: FormationName[] = [
   '4-3-3',
+  '4-3-3 Holding',
+  '4-3-3 Defensive',
+  '4-3-3 Attacking',
   '4-2-3-1',
+  '4-2-2-2',
   '4-4-2',
+  '4-4-1-1',
   '4-1-4-1',
+  '4-1-2-3',
+  '4-1-3-2',
+  '4-5-1',
+  '4-3-1-2',
+  '4-3-2-1',
+  '4-2-4',
   '3-5-2',
   '3-4-3',
   '3-4-2-1',
+  '3-4-1-2',
+  '3-1-4-2',
+  '3-2-4-1',
+  '3-3-3-1',
   '5-3-2',
   '5-4-1',
-  '4-3-1-2'
+  '5-2-3',
+  '5-2-2-1',
+  '5-3-1-1',
+  // 変則フォーメーション (Requirement 10)
+  '非対称4-3-3',
+  '非対称4-2-3-1',
+  '偽SB型4-3-3',
+  '攻撃時3バック化',
+  '守備時5バック化',
+  'ダイヤモンド型4-4-2',
+  'フラット型4-5-1',
+  '2トップ＋トップ下型',
+  '中央密集型',
+  '両ウイング高位置型',
+  '片側ウイング偏重型'
 ];
 
 export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSelectPlayer, onUpdateState }) => {
-  const [selectedStarterId, setSelectedStarterId] = useState<string | null>(null);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [pitchZoom, setPitchZoom] = useState<number>(100);
+  const [replacingPlayer, setReplacingPlayer] = useState<Player | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'lineup' | 'instructions' | 'roles'>('lineup');
   const [benchLimitError, setBenchLimitError] = useState<string | null>(null);
 
   const userClub = state.userClubId ? state.clubs[state.userClubId] : null;
   const tactics = state.tactics;
+
+  const handleReplacementComplete = (newTactics: TeamTactics, updatedPlayers: Record<string, Player>, message: string) => {
+    onUpdateTactics(newTactics);
+    if (onUpdateState) {
+      onUpdateState({
+        ...state,
+        tactics: newTactics,
+        players: updatedPlayers
+      });
+    }
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 4500);
+    setSelectedPlayerId(null);
+  };
 
   // Media reaction when a key/star player is unexpectedly excluded to OUT_OF_SQUAD (Requirement 10)
   const triggerStarPlayerBenchOutSpeculation = (p: Player) => {
@@ -62,57 +111,48 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
     }
   };
 
-  // Swap starter with bench or out-of-squad player
-  const handleSwap = (targetPlayerId: string) => {
-    if (!selectedStarterId) return;
+  // Swap between any two players (Requirement 1: スタメン同士・ベンチ・リザーブ間の確実な交換)
+  const handleSwapBetween = (playerAId: string, playerBId: string) => {
+    if (!playerAId || !playerBId) return;
+    if (playerAId === playerBId) {
+      setSelectedPlayerId(null);
+      return;
+    }
     setBenchLimitError(null);
 
-    const targetPlayer = state.players[targetPlayerId];
-    if (targetPlayer?.injury?.isInjured || targetPlayer?.injuryStatus === 'INJURED' || (state.currentDate && targetPlayer?.injuryReturnDate && targetPlayer.injuryReturnDate > state.currentDate)) {
-      setBenchLimitError(`【負傷警告】${targetPlayer.name}選手は負傷中のため、スタメンに出場・登録できません。(復帰予定: ${targetPlayer.injuryReturnDate || '未定'})`);
+    const result = executePlayerReplacement(
+      tactics,
+      state.players,
+      state.userClubId || '',
+      playerAId,
+      playerBId
+    );
+
+    if (!result.success) {
+      setBenchLimitError(result.message || '選手の入れ替えに失敗しました。');
       return;
     }
 
-    const newStarters = tactics.lineup.starters.map(s => {
-      if (s.playerId === selectedStarterId) {
-        return { ...s, playerId: targetPlayerId };
-      }
-      return s;
-    });
-
-    let newBench = tactics.lineup.bench.map(id => {
-      if (id === targetPlayerId) return selectedStarterId;
-      return id;
-    });
-
-    // If target was in reserves (out of squad), add previous starter to bench or out of squad
-    if (!tactics.lineup.bench.includes(targetPlayerId)) {
-      if (newBench.length < 9) {
-        newBench.push(selectedStarterId);
-      }
+    onUpdateTactics(result.newTactics);
+    if (onUpdateState) {
+      onUpdateState({
+        ...state,
+        tactics: result.newTactics,
+        players: result.updatedPlayers
+      });
     }
 
-    // Update squadStatus on players
-    const updatedPlayers = { ...state.players };
-    if (updatedPlayers[targetPlayerId]) updatedPlayers[targetPlayerId].squadStatus = 'STARTING';
-    if (updatedPlayers[selectedStarterId]) {
-      const willBeOutOfSquad = !newBench.includes(selectedStarterId);
-      updatedPlayers[selectedStarterId].squadStatus = willBeOutOfSquad ? 'OUT_OF_SQUAD' : 'BENCH';
-      if (willBeOutOfSquad) {
-        triggerStarPlayerBenchOutSpeculation(updatedPlayers[selectedStarterId]);
-      }
-    }
+    const pA = state.players[playerAId];
+    const pB = state.players[playerBId];
+    setToastMessage(`配置変更完了: ${pA?.name || '選手'} ⇄ ${pB?.name || '選手'}`);
+    setTimeout(() => setToastMessage(null), 3500);
+    setSelectedPlayerId(null);
+  };
 
-    onUpdateTactics({
-      ...tactics,
-      lineup: {
-        ...tactics.lineup,
-        starters: newStarters,
-        bench: newBench
-      }
-    });
-
-    setSelectedStarterId(null);
+  // Legacy alias for handleSwap
+  const handleSwap = (targetPlayerId: string) => {
+    if (!selectedPlayerId) return;
+    handleSwapBetween(selectedPlayerId, targetPlayerId);
   };
 
   // Move player from out-of-squad to bench (Strict 9-player maximum check: Requirement 11)
@@ -192,14 +232,29 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
   });
 
   const benchPlayers = tactics.lineup.bench.map(id => state.players[id]).filter(Boolean);
-  const reservePlayers = (userClub?.playerIds || [])
-    .filter(id => !tactics.lineup.starters.some(s => s.playerId === id) && !tactics.lineup.bench.includes(id))
-    .map(id => state.players[id])
-    .filter(Boolean);
+  
+  const starterIds = new Set(tactics.lineup.starters.map(s => s.playerId));
+  const benchIds = new Set(tactics.lineup.bench);
+
+  // Requirement 4: 正式な所属選手からスタメン・ベンチ以外を抽出 (他クラブ移籍・他クラブレンタル・重複排除)
+  const reservePlayers = Object.values(state.players).filter(p => {
+    if (p.clubId !== state.userClubId) return false;
+    if (p.isLoaned && p.loanClubId && p.loanClubId !== state.userClubId) return false;
+    if (starterIds.has(p.id) || benchIds.has(p.id)) return false;
+    return true;
+  });
 
   return (
     <div className="space-y-5 pb-20">
       
+      {/* Toast feedback banner */}
+      {toastMessage && (
+        <div className="bg-emerald-950/90 border border-emerald-500/80 rounded-2xl p-3.5 flex items-center gap-2.5 text-emerald-200 text-xs sm:text-sm font-bold shadow-lg animate-in fade-in duration-200">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* Header with Sub-tabs & Formation Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg">
         <div>
@@ -266,89 +321,234 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           
           {/* Tactical Pitch Board (5 cols on lg) */}
-          <div className="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-xl">
+          <div className="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col justify-between">
             <div className="flex items-center justify-between text-xs text-slate-400 mb-3 px-1">
-              <span className="font-semibold text-emerald-400 uppercase tracking-wider font-mono">
-                TACTICAL BOARD ({tactics.formation})
-              </span>
-              <span className="text-[11px] text-slate-500">
-                {selectedStarterId ? '入れ替えるベンチ選手を選択' : 'タップで交代選択'}
-              </span>
-            </div>
-
-            {/* Pitch Container with Grass Pattern */}
-            <div className="relative w-full aspect-[3/4] pitch-pattern rounded-2xl border-2 border-emerald-600/40 p-3 overflow-hidden shadow-inner flex flex-col justify-between">
-              
-              {/* Pitch Markings SVG Overlay */}
-              <div className="absolute inset-0 pointer-events-none opacity-40">
-                <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-                  {/* Outer border */}
-                  <rect x="5%" y="4%" width="90%" height="92%" fill="none" stroke="#fff" strokeWidth="2" />
-                  {/* Halfway line */}
-                  <line x1="5%" y1="50%" x2="95%" y2="50%" stroke="#fff" strokeWidth="2" />
-                  {/* Center circle */}
-                  <circle cx="50%" cy="50%" r="14%" fill="none" stroke="#fff" strokeWidth="2" />
-                  <circle cx="50%" cy="50%" r="1.5%" fill="#fff" />
-                  {/* Penalty box top */}
-                  <rect x="25%" y="4%" width="50%" height="16%" fill="none" stroke="#fff" strokeWidth="2" />
-                  <rect x="37%" y="4%" width="26%" height="6%" fill="none" stroke="#fff" strokeWidth="2" />
-                  {/* Penalty box bottom */}
-                  <rect x="25%" y="80%" width="50%" height="16%" fill="none" stroke="#fff" strokeWidth="2" />
-                  <rect x="37%" y="90%" width="26%" height="6%" fill="none" stroke="#fff" strokeWidth="2" />
-                </svg>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-emerald-400 uppercase tracking-wider font-mono">
+                  TACTICAL BOARD ({tactics.formation})
+                </span>
+                {selectedPlayerId && (
+                  <span className="px-2 py-0.5 rounded-full bg-yellow-400/20 text-yellow-300 font-bold text-[10px] animate-pulse">
+                    入替対象を選択中
+                  </span>
+                )}
               </div>
 
-              {/* Starter Player Pins */}
-              {starters.map((item, idx) => {
-                const p = item.player;
-                if (!p) return null;
-                const isSelected = selectedStarterId === p.id;
-                const isUnavailable = p.injury.isInjured || p.suspension.isSuspended;
-
-                return (
+              {/* Pitch Zoom Controls (Requirement 5: 拡大・縮小操作) */}
+              <div className="flex items-center gap-1 bg-slate-950/80 border border-slate-800 rounded-xl px-2 py-1 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setPitchZoom(prev => Math.max(90, prev - 15))}
+                  className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition cursor-pointer"
+                  title="ピッチ縮小"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[11px] font-mono font-bold text-slate-300 min-w-[38px] text-center">
+                  {pitchZoom}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPitchZoom(prev => Math.min(135, prev + 15))}
+                  className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition cursor-pointer"
+                  title="ピッチ拡大"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                {pitchZoom !== 100 && (
                   <button
-                    key={p.id + idx}
                     type="button"
-                    onClick={() => setSelectedStarterId(isSelected ? null : p.id)}
-                    style={{
-                      position: 'absolute',
-                      left: `${item.pitchX}%`,
-                      top: `${item.pitchY}%`,
-                      transform: 'translate(-50%, -50%)'
-                    }}
-                    className={`group z-10 flex flex-col items-center cursor-pointer transition-transform ${
-                      isSelected ? 'scale-110' : 'hover:scale-105'
-                    }`}
+                    onClick={() => setPitchZoom(100)}
+                    className="p-1 text-slate-500 hover:text-slate-300 rounded hover:bg-slate-800 text-[10px] cursor-pointer"
+                    title="100%にリセット"
                   >
-                    {/* Circle Avatar / Number */}
-                    <div 
-                      className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-xs shadow-lg border-2 transition-all ${
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Instruction tooltip */}
+            <div className="mb-2 px-1 text-[11px] text-slate-400 flex items-center justify-between">
+              <span>
+                {selectedPlayerId 
+                  ? '🔄 移動先のスタメンまたはベンチ選手をタップ（またはドロップ）してください' 
+                  : '💡 選手をタップまたはドラッグして別の選手の位置へ移動させると直接入れ替わります'}
+              </span>
+              {selectedPlayerId && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlayerId(null)}
+                  className="text-xs text-yellow-400 hover:underline font-bold"
+                >
+                  選択解除 ✕
+                </button>
+              )}
+            </div>
+
+            {/* Pitch Container with Grass Pattern (Scalable Zoom Wrapper) */}
+            <div className="relative w-full overflow-hidden rounded-2xl border-2 border-emerald-600/40 shadow-2xl bg-emerald-950/20">
+              <div 
+                className="relative w-full aspect-[3/4] pitch-pattern p-3 transition-transform duration-200 origin-top"
+                style={{ transform: `scale(${pitchZoom / 100})` }}
+              >
+                {/* Pitch Markings SVG Overlay */}
+                <div className="absolute inset-0 pointer-events-none opacity-40">
+                  <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="5%" y="4%" width="90%" height="92%" fill="none" stroke="#fff" strokeWidth="2" />
+                    <line x1="5%" y1="50%" x2="95%" y2="50%" stroke="#fff" strokeWidth="2" />
+                    <circle cx="50%" cy="50%" r="14%" fill="none" stroke="#fff" strokeWidth="2" />
+                    <circle cx="50%" cy="50%" r="1.5%" fill="#fff" />
+                    <rect x="25%" y="4%" width="50%" height="16%" fill="none" stroke="#fff" strokeWidth="2" />
+                    <rect x="37%" y="4%" width="26%" height="6%" fill="none" stroke="#fff" strokeWidth="2" />
+                    <rect x="25%" y="80%" width="50%" height="16%" fill="none" stroke="#fff" strokeWidth="2" />
+                    <rect x="37%" y="90%" width="26%" height="6%" fill="none" stroke="#fff" strokeWidth="2" />
+                  </svg>
+                </div>
+
+                {/* Starter Player Pins (Enlarged & Re-evaluated: Requirement 1 & 5) */}
+                {starters.map((item, idx) => {
+                  const p = item.player;
+                  if (!p) return null;
+                  const isSelected = selectedPlayerId === p.id;
+                  const isUnavailable = p.injury.isInjured || p.suspension.isSuspended;
+                  const fit = getPositionFitOvr(p, item.position);
+
+                  return (
+                    <div
+                      key={p.id + idx}
+                      draggable={!isUnavailable}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', p.id);
+                        setSelectedPlayerId(p.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const draggedId = e.dataTransfer.getData('text/plain') || selectedPlayerId;
+                        if (draggedId && draggedId !== p.id) {
+                          handleSwapBetween(draggedId, p.id);
+                        }
+                      }}
+                      onClick={() => {
+                        if (selectedPlayerId) {
+                          if (selectedPlayerId === p.id) {
+                            setSelectedPlayerId(null);
+                          } else {
+                            handleSwapBetween(selectedPlayerId, p.id);
+                          }
+                        } else {
+                          setSelectedPlayerId(p.id);
+                        }
+                      }}
+                      style={{
+                        position: 'absolute',
+                        left: `${item.pitchX}%`,
+                        top: `${item.pitchY}%`,
+                        transform: 'translate(-50%, -50%)',
+                        touchAction: 'manipulation'
+                      }}
+                      className={`group z-10 flex flex-col items-center cursor-pointer transition-all select-none ${
                         isSelected 
-                          ? 'border-yellow-400 bg-yellow-400 text-slate-950 ring-4 ring-yellow-400/30' 
-                          : isUnavailable 
-                            ? 'border-red-500 bg-red-950/80 text-red-200' 
-                            : 'border-white bg-slate-950 text-white group-hover:border-emerald-400'
+                          ? 'scale-115 z-30' 
+                          : 'hover:scale-105 hover:z-20'
                       }`}
                     >
-                      {p.shirtNumber}
-                    </div>
+                      {/* Position Tag + Fit Grade Badge (Requirement 1: ポジション適性再計算) */}
+                      <div className="flex items-center gap-0.5 mb-0.5 shadow-md">
+                        <span className="px-1.5 py-0.2 rounded-l text-[10px] font-black uppercase bg-slate-950/95 text-emerald-400 border-l border-y border-slate-700">
+                          {item.position}
+                        </span>
+                        <span 
+                          className={`px-1 py-0.2 rounded-r text-[9px] font-black border-r border-y border-slate-700 ${
+                            fit.fitGrade === 'S' ? 'bg-emerald-600 text-white' :
+                            fit.fitGrade === 'A' ? 'bg-blue-600 text-white' :
+                            fit.fitGrade === 'B' ? 'bg-amber-600 text-white' :
+                            fit.fitGrade === 'C' ? 'bg-orange-600 text-white' : 'bg-red-700 text-white'
+                          }`} 
+                          title={`適性: ${fit.fitGrade} (実効OVR: ${fit.effectiveOvr})`}
+                        >
+                          {fit.fitGrade}
+                        </span>
+                      </div>
 
-                    {/* Name Badge */}
-                    <div className="bg-slate-950/90 border border-slate-700/80 px-2 py-0.5 rounded-md mt-1 text-[10px] text-white flex items-center gap-1 shadow-md whitespace-nowrap">
-                      {renderConditionDot(p.condition)}
-                      <span className="font-bold">{p.name.split(' ')[0]}</span>
-                      <span className="text-emerald-400 font-mono">{p.ovr}</span>
-                    </div>
+                      {/* Circle Avatar / Number (Enlarged size: w-12 h-12 sm:w-14 sm:h-14) */}
+                      <div 
+                        className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex flex-col items-center justify-center font-black text-sm sm:text-base shadow-2xl border-2 transition-all ${
+                          isSelected 
+                            ? 'border-yellow-400 bg-yellow-400 text-slate-950 ring-4 ring-yellow-400/50 shadow-yellow-400/40' 
+                            : isUnavailable 
+                              ? 'border-red-500 bg-red-950/90 text-red-200' 
+                              : 'border-white bg-slate-950 text-white group-hover:border-emerald-400'
+                        }`}
+                      >
+                        <span className="leading-none">#{p.shirtNumber}</span>
+                      </div>
 
-                    {isUnavailable && (
-                      <span className="text-[9px] bg-red-600 text-white font-bold px-1 rounded mt-0.5">
-                        出場不可
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                      {/* Name Badge with Condition & Effective OVR */}
+                      <div className="bg-slate-950/95 border border-slate-700/90 px-2 py-0.5 rounded-lg mt-1 text-[11px] sm:text-xs text-white flex items-center gap-1.5 shadow-xl whitespace-nowrap">
+                        {renderConditionDot(p.condition)}
+                        <span className="font-bold truncate max-w-[85px] sm:max-w-[110px]">{p.name.split(' ')[0]}</span>
+                        <span className="text-emerald-400 font-mono font-black">{fit.effectiveOvr}</span>
+                      </div>
+
+                      {isUnavailable && (
+                        <span className="text-[9px] bg-red-600 text-white font-bold px-1.5 py-0.2 rounded mt-0.5 shadow">
+                          出場不可
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
+
+            {/* Quick Action Bar for selected starter or bench player */}
+            {selectedPlayerId && state.players[selectedPlayerId] && (
+              <div className="mt-3 p-3 bg-slate-950 border border-yellow-500/60 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-2xl animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-lg bg-yellow-400/20 text-yellow-300 font-mono font-bold text-xs">
+                    {state.players[selectedPlayerId].position}
+                  </span>
+                  <span className="font-mono text-slate-400 text-xs">
+                    #{state.players[selectedPlayerId].shirtNumber}
+                  </span>
+                  <span className="font-bold text-white text-xs">
+                    {state.players[selectedPlayerId].name}
+                  </span>
+                  <span className="text-xs text-emerald-400 font-mono font-bold">
+                    OVR {state.players[selectedPlayerId].ovr}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setReplacingPlayer(state.players[selectedPlayerId])}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-500/20 transition-all"
+                  >
+                    <ArrowLeftRight className="w-3.5 h-3.5" />
+                    <span>一覧から変更</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSelectPlayer(state.players[selectedPlayerId])}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer border border-slate-700"
+                  >
+                    詳細
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPlayerId(null)}
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Lineup Tables (7 cols on lg) */}
@@ -374,48 +574,75 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                       <th className="py-1.5 px-2 text-right">OVR</th>
                       <th className="py-1.5 px-2 text-right">疲労</th>
                       <th className="py-1.5 px-2 text-center">状態</th>
+                      <th className="py-1.5 px-2 text-center">変更</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 font-medium">
                     {starters.map(({ player: p }) => {
                       if (!p) return null;
-                      const isSelected = selectedStarterId === p.id;
+                      const isSelected = selectedPlayerId === p.id;
                       const isInjured = p.injury.isInjured;
                       const isSuspended = p.suspension.isSuspended;
 
                       return (
                         <tr 
                           key={p.id}
-                          onClick={() => setSelectedStarterId(isSelected ? null : p.id)}
+                          draggable={!isInjured && !isSuspended}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/plain', p.id);
+                            setSelectedPlayerId(p.id);
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            const draggedId = e.dataTransfer.getData('text/plain') || selectedPlayerId;
+                            if (draggedId && draggedId !== p.id) {
+                              handleSwapBetween(draggedId, p.id);
+                            }
+                          }}
+                          onClick={() => {
+                            if (selectedPlayerId) {
+                              if (selectedPlayerId === p.id) {
+                                setSelectedPlayerId(null);
+                              } else {
+                                handleSwapBetween(selectedPlayerId, p.id);
+                              }
+                            } else {
+                              setSelectedPlayerId(p.id);
+                            }
+                          }}
                           className={`hover:bg-slate-800/60 transition-colors cursor-pointer ${
-                            isSelected ? 'bg-emerald-950/40 text-emerald-200' : 'text-slate-200'
+                            isSelected ? 'bg-yellow-950/40 text-yellow-200 border-l-4 border-yellow-400' : 'text-slate-200'
                           }`}
                         >
-                          <td className="py-2 px-2 font-mono text-slate-400">#{p.shirtNumber}</td>
-                          <td className="py-2 px-2">
+                          <td className="py-2.5 px-2 font-mono text-slate-400 font-bold">#{p.shirtNumber}</td>
+                          <td className="py-2.5 px-2">
                             <span className="font-bold text-emerald-400 font-mono">{p.position}</span>
                           </td>
-                          <td className="py-2 px-2">
+                          <td className="py-2.5 px-2">
                             <div 
                               onClick={(e) => { e.stopPropagation(); onSelectPlayer(p); }}
-                              className="font-bold hover:underline"
+                              className="font-bold hover:underline text-xs sm:text-sm"
                             >
                               {p.name}
                             </div>
-                            <div className="text-[10px] text-slate-500">{p.playstyle}</div>
+                            <div className="text-[10px] text-slate-500">{p.age}歳 · {p.playstyle}</div>
                           </td>
-                          <td className="py-2 px-1 text-center">
+                          <td className="py-2.5 px-1 text-center">
                             {renderConditionDot(p.condition)}
                           </td>
-                          <td className="py-2 px-2 text-right font-mono font-bold text-white">
+                          <td className="py-2.5 px-2 text-right font-mono font-bold text-white text-xs sm:text-sm">
                             {p.ovr}
                           </td>
-                          <td className="py-2 px-2 text-right font-mono">
+                          <td className="py-2.5 px-2 text-right font-mono">
                             <span className={p.fatigue > 40 ? 'text-red-400' : 'text-slate-400'}>
                               {p.fatigue}%
                             </span>
                           </td>
-                          <td className="py-2 px-2 text-center">
+                          <td className="py-2.5 px-2 text-center">
                             {isInjured ? (
                               <span className="px-1.5 py-0.5 rounded bg-red-950 text-red-400 text-[10px] font-bold border border-red-800">
                                 負傷
@@ -425,8 +652,18 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                                 停止
                               </span>
                             ) : (
-                              <span className="text-[10px] text-emerald-400">良好</span>
+                              <span className="text-[10px] text-emerald-400 font-semibold">良好</span>
                             )}
+                          </td>
+                          <td className="py-2.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => setReplacingPlayer(p)}
+                              className="px-2 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-[10px] font-bold border border-emerald-500/40 cursor-pointer transition-colors flex items-center gap-1 mx-auto"
+                            >
+                              <ArrowLeftRight className="w-2.5 h-2.5" />
+                              <span>変更</span>
+                            </button>
                           </td>
                         </tr>
                       );
@@ -455,9 +692,9 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                   <span className="text-xs font-bold text-white uppercase tracking-wider">
                     ベンチメンバー (最大9人 / 現在 {benchPlayers.length}名)
                   </span>
-                  {selectedStarterId && (
+                  {selectedPlayerId && (
                     <span className="ml-2 text-[11px] text-yellow-400 font-semibold">
-                      ← 交代させたい選手をタップしてください
+                      ← 交代させたいベンチ選手をタップしてください
                     </span>
                   )}
                 </div>
@@ -467,58 +704,104 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
               </div>
 
               <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
-                {benchPlayers.map(p => (
-                  <div
-                    key={p.id}
-                    onClick={() => {
-                      if (selectedStarterId) {
-                        handleSwap(p.id);
-                      } else {
-                        onSelectPlayer(p);
-                      }
-                    }}
-                    className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
-                      selectedStarterId 
-                        ? 'border-emerald-500/50 hover:bg-emerald-950/30' 
-                        : 'border-slate-800 hover:border-slate-700 bg-slate-950/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-5 text-slate-500 font-mono text-[11px]">#{p.shirtNumber}</span>
-                      <span className="w-8 font-bold text-blue-400 font-mono text-xs">{p.position}</span>
-                      <div>
-                        <div className="text-xs font-bold text-white">{p.name}</div>
-                        <div className="text-[10px] text-slate-500">{p.age}歳 · {p.playstyle}</div>
+                {benchPlayers.map(p => {
+                  const isSelected = selectedPlayerId === p.id;
+                  const isInjured = p.injury?.isInjured || p.injuryStatus === 'INJURED';
+                  const isSuspended = p.suspension?.isSuspended;
+
+                  return (
+                    <div
+                      key={p.id}
+                      draggable={!isInjured && !isSuspended}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', p.id);
+                        setSelectedPlayerId(p.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const draggedId = e.dataTransfer.getData('text/plain') || selectedPlayerId;
+                        if (draggedId && draggedId !== p.id) {
+                          handleSwapBetween(draggedId, p.id);
+                        }
+                      }}
+                      onClick={() => {
+                        if (selectedPlayerId) {
+                          if (selectedPlayerId === p.id) {
+                            setSelectedPlayerId(null);
+                          } else {
+                            handleSwapBetween(selectedPlayerId, p.id);
+                          }
+                        } else {
+                          setSelectedPlayerId(p.id);
+                        }
+                      }}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
+                        isSelected 
+                          ? 'border-yellow-400 bg-yellow-950/30' 
+                          : selectedPlayerId
+                            ? 'border-emerald-500/60 hover:bg-emerald-950/30'
+                            : 'border-slate-800 hover:border-slate-700 bg-slate-950/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-5 text-slate-500 font-mono text-[11px]">#{p.shirtNumber}</span>
+                        <span className="w-8 font-bold text-blue-400 font-mono text-xs">{p.position}</span>
+                        <div>
+                          <div className="text-xs font-bold text-white">{p.name}</div>
+                          <div className="text-[10px] text-slate-500">{p.age}歳 · {p.playstyle}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {renderConditionDot(p.condition)}
+                        <span className="text-xs font-mono font-bold text-white">{p.ovr}</span>
+                        {selectedPlayerId && selectedPlayerId !== p.id ? (
+                          <button
+                            type="button"
+                            className="px-2 py-1 rounded bg-emerald-500 text-slate-950 text-[10px] font-bold"
+                          >
+                            入替
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onSelectPlayer(p); }}
+                              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] border border-slate-700 cursor-pointer"
+                            >
+                              詳細
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setReplacingPlayer(p); }}
+                              className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-[10px] font-bold border border-emerald-500/40 cursor-pointer flex items-center gap-1"
+                              title="別の選手と入れ替える"
+                            >
+                              <ArrowLeftRight className="w-2.5 h-2.5" />
+                              <span>変更</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleDemoteToOutOfSquad(p.id); }}
+                              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-red-300 text-[10px] border border-slate-700"
+                              title="ベンチ外へ移動"
+                            >
+                              外す
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      {renderConditionDot(p.condition)}
-                      <span className="text-xs font-mono font-bold text-white">{p.ovr}</span>
-                      {selectedStarterId ? (
-                        <button
-                          type="button"
-                          className="px-2 py-1 rounded bg-emerald-500 text-slate-950 text-[10px] font-bold"
-                        >
-                          交代
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleDemoteToOutOfSquad(p.id); }}
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-red-300 text-[10px] border border-slate-700"
-                          title="ベンチ外へ移動"
-                        >
-                          外す
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
-            {/* Bench-Out (OUT_OF_SQUAD / 登録外・リザーブ) (Requirements 6, 7, 8) */}
+            {/* Bench-Out (OUT_OF_SQUAD / 登録外・リザーブ) (Requirements 4, 5: 拡大・詳細情報表示) */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl">
               <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
                 <div>
@@ -526,7 +809,7 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                     ベンチ外メンバー (Out of Squad / Reserves)
                   </span>
                   <p className="text-[10px] text-slate-500 mt-0.5">
-                    ※移籍加入選手・負傷者・疲労休養・若手育成枠。試合には直接出場できません。
+                    ※正式所属選手（他クラブ移籍・他クラブレンタル・重複データ排除済み）。
                   </p>
                 </div>
                 <span className="text-xs text-slate-400 font-mono">{reservePlayers.length}名</span>
@@ -542,32 +825,59 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                     const isInjured = p.injury?.isInjured || p.injuryStatus === 'INJURED';
                     const isFatigued = p.fatigue > 45;
                     const isSuspended = p.suspension?.isSuspended;
+                    const isSelected = selectedPlayerId === p.id;
 
                     return (
                       <div
                         key={p.id}
+                        draggable={!isInjured && !isSuspended}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', p.id);
+                          setSelectedPlayerId(p.id);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const draggedId = e.dataTransfer.getData('text/plain') || selectedPlayerId;
+                          if (draggedId && draggedId !== p.id) {
+                            handleSwapBetween(draggedId, p.id);
+                          }
+                        }}
                         onClick={() => {
-                          if (selectedStarterId && !isInjured && !isSuspended) {
-                            handleSwap(p.id);
+                          if (selectedPlayerId) {
+                            if (selectedPlayerId === p.id) {
+                              setSelectedPlayerId(null);
+                            } else {
+                              handleSwapBetween(selectedPlayerId, p.id);
+                            }
                           } else {
-                            onSelectPlayer(p);
+                            setSelectedPlayerId(p.id);
                           }
                         }}
                         className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${
-                          selectedStarterId && !isInjured && !isSuspended
-                            ? 'border-yellow-500/50 hover:bg-yellow-950/20'
-                            : 'border-slate-800/80 bg-slate-950/40 hover:border-slate-700'
+                          isSelected 
+                            ? 'border-yellow-400 bg-yellow-950/30'
+                            : selectedPlayerId && !isInjured && !isSuspended
+                              ? 'border-yellow-500/50 hover:bg-yellow-950/20'
+                              : 'border-slate-800/80 bg-slate-950/40 hover:border-slate-700'
                         }`}
                       >
+                        {/* Requirement 4: 選手名、ポジション、OVR、年齢、コンディション、出場可否 */}
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span className="w-5 text-slate-600 font-mono text-[11px]">#{p.shirtNumber}</span>
                           <span className="w-8 font-semibold text-slate-400 font-mono text-xs">{p.position}</span>
                           <div className="min-w-0">
-                            <div className="text-xs font-bold text-slate-200 truncate">{p.name}</div>
+                            <div className="text-xs sm:text-sm font-bold text-slate-200 truncate flex items-center gap-2">
+                              <span>{p.name}</span>
+                              <span className="text-[11px] font-mono text-slate-400 font-normal">({p.age}歳)</span>
+                            </div>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               {isInjured && (
                                 <span className="px-1.5 py-0.2 rounded bg-red-950 text-red-400 text-[9px] font-bold border border-red-800">
-                                  負傷 (全治{p.injury?.recoveryDays || 7}日)
+                                  負傷 (全治{p.injury?.recoveryDays || p.injuryDaysRemaining || 7}日)
                                 </span>
                               )}
                               {isFatigued && (
@@ -580,11 +890,14 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                                   出場停止
                                 </span>
                               )}
-                              {!isInjured && !isFatigued && !isSuspended && (
-                                <span className="text-[10px] text-slate-500">
-                                  {p.age <= 21 ? '若手育成' : '戦術待機'}
+                              {!isInjured && !isSuspended && (
+                                <span className="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 text-[9px] font-semibold border border-emerald-800/60">
+                                  出場可
                                 </span>
                               )}
+                              <span className="text-[10px] text-slate-500">
+                                {p.playstyle}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -593,7 +906,7 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                           {renderConditionDot(p.condition)}
                           <span className="text-xs font-mono font-bold text-slate-300">{p.ovr}</span>
                           
-                          {selectedStarterId ? (
+                          {selectedPlayerId && selectedPlayerId !== p.id ? (
                             <button
                               type="button"
                               disabled={isInjured || isSuspended}
@@ -603,21 +916,39 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                                   : 'bg-emerald-500 text-slate-950'
                               }`}
                             >
-                              スタメンへ
+                              入替
                             </button>
                           ) : (
-                            <button
-                              type="button"
-                              disabled={isInjured || isSuspended}
-                              onClick={(e) => { e.stopPropagation(); handlePromoteToBench(p.id); }}
-                              className={`px-2 py-1 rounded text-[10px] border font-semibold ${
-                                isInjured || isSuspended
-                                  ? 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed'
-                                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 border-slate-700'
-                              }`}
-                            >
-                              {isInjured ? '負傷中' : isSuspended ? '出場停止' : 'ベンチへ'}
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onSelectPlayer(p); }}
+                                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] border border-slate-700 cursor-pointer"
+                              >
+                                詳細
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setReplacingPlayer(p); }}
+                                className="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-[10px] font-bold border border-emerald-500/40 cursor-pointer flex items-center gap-1"
+                                title="別の選手と入れ替える"
+                              >
+                                <ArrowLeftRight className="w-2.5 h-2.5" />
+                                <span>変更</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isInjured || isSuspended}
+                                onClick={(e) => { e.stopPropagation(); handlePromoteToBench(p.id); }}
+                                className={`px-2 py-1 rounded text-[10px] border font-semibold ${
+                                  isInjured || isSuspended
+                                    ? 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed'
+                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-emerald-400 border-slate-700'
+                                }`}
+                              >
+                                {isInjured ? '負傷中' : isSuspended ? '出場停止' : 'ベンチへ'}
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -792,6 +1123,18 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
             </div>
           </div>
         </div>
+      )}
+
+      {/* PLAYER REPLACEMENT MODAL (Requirement 1, 2, 3) */}
+      {replacingPlayer && (
+        <PlayerReplacementModal
+          isOpen={true}
+          oldPlayer={replacingPlayer}
+          state={state}
+          tactics={tactics}
+          onCompleteReplacement={handleReplacementComplete}
+          onClose={() => setReplacingPlayer(null)}
+        />
       )}
 
     </div>

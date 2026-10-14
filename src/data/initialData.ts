@@ -1092,5 +1092,44 @@ export const INITIAL_YOUTH_ACADEMY: YouthProspect[] = [
     personality: '野心的',
     scoutReport: '初速の爆発力と相手DFを切り裂くアジリティ。決定力が向上すればワールドクラスになれる逸材。',
     promoted: false
+  },
+  {
+    id: 'youth_4',
+    name: 'Noah Schneider',
+    age: 16,
+    nationality: 'ドイツ',
+    position: 'GK',
+    ovr: 65,
+    potential: 86,
+    playstyle: 'ショットストッパー',
+    personality: '冷静沈着',
+    scoutReport: '並外れた反射神経と至近距離セーブ力。16歳にして堂々たるコーチングで守備陣を統率。',
+    promoted: false
+  },
+  {
+    id: 'youth_5',
+    name: 'Lucas Meyer',
+    age: 16,
+    nationality: 'フランス',
+    position: 'CDM',
+    ovr: 68,
+    potential: 88,
+    playstyle: 'アンカー',
+    personality: '努力家',
+    scoutReport: '卓越した危機察知能力と広大なボール奪取範囲。シンプルかつ正確な配球でテンポを操る。',
+    promoted: false
+  },
+  {
+    id: 'youth_6',
+    name: '堂安 颯太 (Sota Doan)',
+    age: 17,
+    nationality: '日本',
+    position: 'ST',
+    ovr: 80,
+    potential: 93,
+    playstyle: 'ゴールゲッター',
+    personality: '野心的',
+    scoutReport: '【世代最高の神童】驚異的な決定力と爆発的アジリティ。17歳にしてすでにトップチーム即戦力レベルの破格の才能。',
+    promoted: false
   }
 ];

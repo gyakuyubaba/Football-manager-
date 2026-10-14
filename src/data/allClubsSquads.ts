@@ -242,6 +242,23 @@ export const ADDITIONAL_CLUB_SEEDS: Record<string, RosterSeed[]> = {
     { name: 'Giacomo Raspadori', position: 'CF', age: 26, nationality: 'イタリア', ovr: 80, shirtNumber: 81 }
   ],
 
+  parma: [
+    { name: '鈴木 彩艶', position: 'GK', age: 23, nationality: '日本', ovr: 78, shirtNumber: 31, playstyle: 'ビルドアップ型GK', preferredFoot: '右' },
+    { name: 'Enrico Delprato', position: 'CB', age: 26, nationality: 'イタリア', ovr: 75, shirtNumber: 15, playstyle: 'ボール運べるCB', preferredFoot: '右' },
+    { name: 'Alessandro Circati', position: 'CB', age: 22, nationality: 'オーストラリア', ovr: 74, shirtNumber: 39, playstyle: 'ボール運べるCB', preferredFoot: '右' },
+    { name: 'Emanuele Valeri', position: 'LB', age: 27, nationality: 'イタリア', ovr: 74, shirtNumber: 14, playstyle: '攻撃的SB', preferredFoot: '左' },
+    { name: 'Woyo Coulibaly', position: 'RB', age: 26, nationality: 'フランス', ovr: 73, shirtNumber: 26, playstyle: '守備的SB', preferredFoot: '右' },
+    { name: 'Adrián Bernabé', position: 'CM', age: 24, nationality: 'スペイン', ovr: 77, shirtNumber: 10, playstyle: 'チャンスメイカー', preferredFoot: '左' },
+    { name: 'Simon Sohm', position: 'CM', age: 25, nationality: 'スイス', ovr: 75, shirtNumber: 19, playstyle: 'ボックストゥボックス', preferredFoot: '右' },
+    { name: 'Nahuel Estévez', position: 'CDM', age: 30, nationality: 'アルゼンチン', ovr: 74, shirtNumber: 8, playstyle: 'アンカー', preferredFoot: '右' },
+    { name: 'Dennis Man', position: 'RW', age: 27, nationality: 'ルーマニア', ovr: 77, shirtNumber: 98, playstyle: '俊足ドリブラー', preferredFoot: '左' },
+    { name: 'Valentin Mihăilă', position: 'LW', age: 26, nationality: 'ルーマニア', ovr: 75, shirtNumber: 28, playstyle: 'スピードスター', preferredFoot: '右' },
+    { name: 'Ange-Yoan Bonny', position: 'ST', age: 22, nationality: 'フランス', ovr: 76, shirtNumber: 13, playstyle: 'ターゲットマン', preferredFoot: '右' },
+    { name: 'Hernani', position: 'CM', age: 31, nationality: 'ブラジル', ovr: 74, shirtNumber: 27, playstyle: 'ボックストゥボックス', preferredFoot: '右' },
+    { name: 'Matteo Cancellieri', position: 'RW', age: 24, nationality: 'イタリア', ovr: 74, shirtNumber: 22, playstyle: '俊足ドリブラー', preferredFoot: '左' },
+    { name: 'Leandro Chichizola', position: 'GK', age: 35, nationality: 'アルゼンチン', ovr: 72, shirtNumber: 1, playstyle: 'ショットストッパー', preferredFoot: '右' }
+  ],
+
   // ==========================================
   // LIGUE 1 (2025/26 Season End)
   // ==========================================

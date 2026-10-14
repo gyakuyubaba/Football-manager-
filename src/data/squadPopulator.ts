@@ -1,38 +1,103 @@
 import { Player, Position, Club, TeamTactics } from '../types/game';
-import { ALL_116_CLUBS } from './clubsData';
+import { ALL_116_CLUBS, ENABLE_J_LEAGUE } from './clubsData';
 import { CURATED_REAL_SQUADS } from './squadsCatalog';
 import { ADDITIONAL_CLUB_SEEDS } from './allClubsSquads';
 import { makeRealPlayer } from './realPlayersDatabase';
 import { checkPlayerDataIntegrity } from '../engine/dataValidator';
 import { generateFullJLeaguePlayers } from './jLeagueData';
 
-// Standard 18 squad positions template
+// Standard 25 squad positions template (3 GKs, 4 CBs, 2 LBs, 2 RBs, 2 CDMs, 2 CMs, 2 CAMs, 1 LM, 1 RM, 1 LW, 1 RW, 3 STs, 1 CF)
 const SQUAD_POSITIONS_TEMPLATE: Position[] = [
-  'GK', 'CB', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST',
-  'GK', 'CB', 'CM', 'RM', 'LM', 'ST', 'CF'
+  'GK', 'GK', 'GK',
+  'CB', 'CB', 'CB', 'CB',
+  'LB', 'LB', 'RB', 'RB',
+  'CDM', 'CDM', 'CM', 'CM', 'CAM',
+  'LM', 'RM', 'LW', 'RW',
+  'ST', 'ST', 'CF', 'ST', 'CAM'
+];
+
+// Age brackets strictly matching User Specification:
+// 16-19: 若手有望株, 20-23: 若手・成長期, 24-28: 全盛期, 29-32: ベテラン化開始, 33-36: 経験豊富なベテラン, 37+: 現役ベテラン
+const SPEC_AGE_DISTRIBUTION = [
+  17, 18, 19, // 若手有望株
+  20, 21, 22, 23, // 若手・成長期
+  24, 25, 26, 27, 28, // 全盛期
+  29, 30, 31, 32, // ベテラン化開始
+  33, 34, 35, 36, // 経験豊富なベテラン
+  37, 38 // 現役ベテラン
 ];
 
 // Authentic European First Names & Surnames for Non-Colliding Depth Squad Players
 const DEPTH_NAMES_BY_COUNTRY: Record<string, { firstNames: string[]; lastNames: string[] }> = {
   'イングランド': {
-    firstNames: ['George', 'Liam', 'Harry', 'Jack', 'Callum', 'Oliver', 'Noah', 'Leo', 'Arthur', 'Oscar', 'Freddie', 'Alfie', 'Finley', 'Archie', 'Charlie', 'Harvey'],
-    lastNames: ['Pemberton', 'Ellington', 'Holliday', 'Barkworth', 'Cranston', 'Blackwood', 'Whitmore', 'Fairclough', 'Thorold', 'Ainsworth', 'Brabazon', 'Nethercott', 'Colquhoun', 'Stanhope', 'Harpur', 'Goxhill']
+    firstNames: [
+      'George', 'Liam', 'Harry', 'Jack', 'Callum', 'Oliver', 'Noah', 'Leo', 'Arthur', 'Oscar',
+      'Freddie', 'Alfie', 'Finley', 'Archie', 'Charlie', 'Harvey', 'Mason', 'Ethan', 'Jacob', 'Logan',
+      'Lucas', 'Harrison', 'Daniel', 'Theo', 'Isaac', 'Edward', 'James', 'Joshua', 'Henry', 'Max',
+      'Samuel', 'William', 'Benjamin', 'Sebastian', 'Joseph', 'Alexander', 'Teddy', 'Elijah', 'Reuben', 'Jaxon'
+    ],
+    lastNames: [
+      'Pemberton', 'Ellington', 'Holliday', 'Barkworth', 'Cranston', 'Blackwood', 'Whitmore', 'Fairclough', 'Thorold', 'Ainsworth',
+      'Brabazon', 'Nethercott', 'Colquhoun', 'Stanhope', 'Harpur', 'Goxhill', 'Kettlewell', 'Bradshaw', 'Finchley', 'Ashbourne',
+      'Baxendale', 'Chetwynd', 'Davenport', 'Ellerby', 'Grosvenor', 'Hawkesbury', 'Kenilworth', 'Langford', 'Montague', 'Norwood',
+      'Oakhaven', 'Radcliffe', 'Stanbury', 'Thornbury', 'Wakefield', 'Yardley', 'Somerset', 'Ravenscroft', 'Kingswood', 'Beaumont'
+    ]
   },
   'スペイン': {
-    firstNames: ['Hugo', 'Mateo', 'Lucas', 'Martín', 'Daniel', 'Pablo', 'Alejandro', 'Manuel', 'Álvaro', 'Adrián', 'David', 'Mario', 'Diego', 'Marcos', 'Javier'],
-    lastNames: ['Carballeira', 'Villacastín', 'Monasterio', 'Zubeldia', 'Basterretxea', 'Aranguren', 'Bustamante', 'Campomanes', 'Fontcuberta', 'Urrutikoetxea', 'Garmendia', 'Madariaga', 'Santisteban', 'Barrenetxea']
+    firstNames: [
+      'Hugo', 'Mateo', 'Lucas', 'Martín', 'Daniel', 'Pablo', 'Alejandro', 'Manuel', 'Álvaro', 'Adrián',
+      'David', 'Mario', 'Diego', 'Marcos', 'Javier', 'Nicolás', 'Sergio', 'Carlos', 'Gonzalo', 'Iker',
+      'Rubén', 'Iván', 'Raúl', 'Jorge', 'Héctor', 'Guillermo', 'Jaime', 'Víctor', 'Samuel', 'Ignacio',
+      'Unai', 'Aitor', 'Mikel', 'Julen', 'Ander', 'Gorka', 'Asier', 'Borja', 'César', 'Pelayo'
+    ],
+    lastNames: [
+      'Carballeira', 'Villacastín', 'Monasterio', 'Zubeldia', 'Basterretxea', 'Aranguren', 'Bustamante', 'Campomanes', 'Fontcuberta', 'Urrutikoetxea',
+      'Garmendia', 'Madariaga', 'Santisteban', 'Barrenetxea', 'Villanueva', 'Peñaflor', 'Alcántara', 'Benavides', 'Cienfuegos', 'Delgado',
+      'Echeverría', 'Fernández', 'Garrido', 'Hidalgo', 'Izaguirre', 'Jiménez', 'Larrañaga', 'Mendizábal', 'Navarrete', 'Ochandiano',
+      'Piedrahíta', 'Quintanilla', 'Rebolledo', 'Samaniego', 'Torregrosa', 'Valdepeñas', 'Yravedra', 'Zamudio', 'Barriocanal', 'Corcuera'
+    ]
   },
   'ドイツ': {
-    firstNames: ['Lukas', 'Finn', 'Jonas', 'Paul', 'Niklas', 'Tim', 'Jan', 'Leon', 'Felix', 'Maximilian', 'Julian', 'Moritz', 'Elias', 'Hannes', 'Tobias'],
-    lastNames: ['Holzbrinck', 'Breitenstein', 'Westermann', 'Lindemann', 'Kaufbeuren', 'Schneidewind', 'Rosenkranz', 'Bärenfänger', 'Tannhäuser', 'Winterfeld', 'Diefenbach', 'Stauffenberg', 'Klingenberg', 'Sonnenschein']
+    firstNames: [
+      'Lukas', 'Finn', 'Jonas', 'Paul', 'Niklas', 'Tim', 'Jan', 'Leon', 'Felix', 'Maximilian',
+      'Julian', 'Moritz', 'Elias', 'Hannes', 'Tobias', 'Simon', 'Fabian', 'Florian', 'Alexander', 'Marcel',
+      'David', 'Philipp', 'Daniel', 'Marvin', 'Sebastian', 'Robin', 'Christian', 'Kevin', 'Patrick', 'Dominik',
+      'Lennard', 'Hendrik', 'Mats', 'Torben', 'Malte', 'Sven', 'Jannik', 'Bastian', 'Nico', 'Benedikt'
+    ],
+    lastNames: [
+      'Holzbrinck', 'Breitenstein', 'Westermann', 'Lindemann', 'Kaufbeuren', 'Schneidewind', 'Rosenkranz', 'Bärenfänger', 'Tannhäuser', 'Winterfeld',
+      'Diefenbach', 'Stauffenberg', 'Klingenberg', 'Sonnenschein', 'Eichelmann', 'Falkenstein', 'Greifenstein', 'Himmelfarb', 'Jaegerndorff', 'Kirchberger',
+      'Lichtenstein', 'Meisenheimer', 'Nordenschild', 'Otterstetter', 'Pfefferkorn', 'Quartier', 'Reichenbacher', 'Schwarzenberg', 'Trautmann', 'Ullenspiegel',
+      'Vogelgesang', 'Wachenrodt', 'Zeitschel', 'Bernburger', 'Dobermann', 'Eisenach', 'Friedrichshof', 'Gleichenberg', 'Hohenstaufen', 'Kappelmeyer'
+    ]
   },
   'イタリア': {
-    firstNames: ['Lorenzo', 'Mattia', 'Tommaso', 'Gabriele', 'Edoardo', 'Federico', 'Riccardo', 'Davide', 'Samuele', 'Simone', 'Michele', 'Pietro', 'Filippo'],
-    lastNames: ['Tagliaferri', 'Castelvecchio', 'Montesquieu', 'Barcellona', 'Campanella', 'Bentivoglio', 'Pietralunga', 'Valvassori', 'Bongiovanni', 'Scaramuccia', 'Passalacqua', 'Mazzagatti', 'Quattrocchi']
+    firstNames: [
+      'Lorenzo', 'Mattia', 'Tommaso', 'Gabriele', 'Edoardo', 'Federico', 'Riccardo', 'Davide', 'Samuele', 'Simone',
+      'Michele', 'Pietro', 'Filippo', 'Andrea', 'Marco', 'Matteo', 'Luca', 'Francesco', 'Alessandro', 'Giovanni',
+      'Alessio', 'Nicolò', 'Christian', 'Daniele', 'Jacopo', 'Manuel', 'Diego', 'Giacomo', 'Alberto', 'Elia',
+      'Valerio', 'Fabio', 'Massimo', 'Stefano', 'Paolo', 'Giorgio', 'Claudio', 'Gianluca', 'Vincenzo', 'Salvatore'
+    ],
+    lastNames: [
+      'Tagliaferri', 'Castelvecchio', 'Montesquieu', 'Barcellona', 'Campanella', 'Bentivoglio', 'Pietralunga', 'Valvassori', 'Bongiovanni', 'Scaramuccia',
+      'Passalacqua', 'Mazzagatti', 'Quattrocchi', 'Abbondanzieri', 'Belcastro', 'Colluccini', 'Deangelis', 'Falcettelli', 'Gagliardelli', 'Innocentini',
+      'Lombardozzi', 'Marcovaldi', 'Notaristefano', 'Ottaviani', 'Palombella', 'Quiriconi', 'Riccitelli', 'Sperandio', 'Tarantola', 'Uccellatori',
+      'Venturini', 'Zaccagnini', 'Boncompagni', 'Casagrande', 'Dellarovere', 'Fattoruso', 'Guerrieri', 'Lanfranchi', 'Mastrorilli', 'Petrocchi'
+    ]
   },
   'フランス': {
-    firstNames: ['Gabriel', 'Raphaël', 'Jules', 'Arthur', 'Louis', 'Maël', 'Lucas', 'Adam', 'Hugo', 'Sacha', 'Gaspard', 'Mathis', 'Nathan', 'Clément'],
-    lastNames: ['Chanteloube', 'Villedieu', 'Rochechouart', 'Montauban', 'Beauchamp', 'Fontenelle', 'Castelbajac', 'Dambreuse', 'Chateaubriand', 'Lescure', 'Grandchamp', 'Puydebat', 'Hautefort', 'Bellerive']
+    firstNames: [
+      'Gabriel', 'Raphaël', 'Jules', 'Arthur', 'Louis', 'Maël', 'Lucas', 'Adam', 'Hugo', 'Sacha',
+      'Gaspard', 'Mathis', 'Nathan', 'Clément', 'Théo', 'Maxime', 'Alexandre', 'Antoine', 'Paul', 'Thomas',
+      'Romain', 'Nicolas', 'Julien', 'Quentin', 'Valentin', 'Adrien', 'Guillaume', 'Florian', 'Bastien', 'Benjamin',
+      'Dorian', 'Corentin', 'Dylan', 'Gaëtan', 'Loïc', 'Mathieu', 'Rémi', 'Tristan', 'Victor', 'Yanis'
+    ],
+    lastNames: [
+      'Chanteloube', 'Villedieu', 'Rochechouart', 'Montauban', 'Beauchamp', 'Fontenelle', 'Castelbajac', 'Dambreuse', 'Chateaubriand', 'Lescure',
+      'Grandchamp', 'Puydebat', 'Hautefort', 'Bellerive', 'Argenteuil', 'Boisrond', 'Courtemanche', 'Delaunay', 'Estrébelle', 'Fauconberg',
+      'Gaucheron', 'Hardivillier', 'Isambert', 'Jolicoeur', 'Keroualle', 'Larmagnac', 'Montmorillon', 'Neuville', 'Orbec', 'Portefaix',
+      'Quimperlé', 'Rochedieu', 'Sainte-Beuve', 'Tremblay', 'Ussé', 'Valmousquet', 'Wicquefort', 'Aubervilliers', 'Bréval', 'Corbineau'
+    ]
   }
 };
 
@@ -50,20 +115,25 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
       return false;
     }
 
-    const norm = p.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    let finalName = p.name;
+    const norm = finalName.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     if (registeredNormalizedNames.has(norm)) {
-      // Duplicate person detected, skip secondary clone
-      return false;
+      if (p.id.startsWith('p_')) {
+        finalName = `${p.name} Jr.`;
+      } else {
+        return false;
+      }
     }
 
     let finalId = p.id;
     if (registeredPlayerIds.has(finalId)) {
-      finalId = `${p.id}_${Math.floor(Math.random() * 1000)}`;
+      finalId = `${p.id}_${Math.floor(Math.random() * 10000)}`;
     }
 
     const cleanPlayer: Player = {
       ...p,
       id: finalId,
+      name: finalName,
       currentClubId: p.clubId,
       squadStatus: p.squadStatus || 'OUT_OF_SQUAD',
       injuryStatus: p.injuryStatus || (p.injury?.isInjured ? 'INJURED' : 'FIT'),
@@ -73,7 +143,7 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
 
     registry[finalId] = cleanPlayer;
     registeredPlayerIds.add(finalId);
-    registeredNormalizedNames.add(norm);
+    registeredNormalizedNames.add(cleanPlayer.name.trim().toLowerCase().replace(/[^a-z0-9]/g, ''));
     return true;
   };
 
@@ -87,7 +157,9 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
   // 2. Register additional authentic club seeds
   Object.entries(ADDITIONAL_CLUB_SEEDS).forEach(([clubId, seeds]) => {
     seeds.forEach((seed, idx) => {
-      const pId = `${clubId}_${idx + 1}_${seed.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}`;
+      const pId = seed.name === '鈴木 彩艶' 
+        ? 'parma_zion_suzuki' 
+        : `${clubId}_${idx + 1}_${seed.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}`;
       const tierMultiplier = seed.ovr >= 85 ? 65000000 : seed.ovr >= 80 ? 30000000 : seed.ovr >= 75 ? 12000000 : 2500000;
       const wageMultiplier = seed.ovr >= 85 ? 200000 : seed.ovr >= 80 ? 100000 : seed.ovr >= 75 ? 40000 : 12000;
 
@@ -107,30 +179,59 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
         seed.playstyle || (seed.position === 'GK' ? 'ショットストッパー' : 'チャンスメイカー')
       );
 
+      // Requirement 4: Zion Suzuki exceptional GK passing, kicking precision & build-up from back
+      if (seed.name === '鈴木 彩艶') {
+        player.name = '鈴木 彩艶 (Zion Suzuki)';
+        player.passing = 76; // Footwork, build-up, short/long pass ability significantly high for a GK
+        player.gk = 79;
+        player.physical = 83;
+        player.pace = 68;
+        player.potential = 86;
+        player.exactOvr = 78.0;
+        player.playstyle = 'ビルドアップ型GK';
+      }
+
       addPlayerIfUnique(player);
     });
   });
 
-  // 3. Ensure all 96 European clubs have at least 18 fully structured players without reusing real star names
+  // 3. Ensure all 96 European clubs have at least 25 fully structured players across all age brackets
   ALL_116_CLUBS.forEach((club, clubIdx) => {
     const existing = Object.values(registry).filter(p => p.clubId === club.id);
-    const needed = Math.max(0, 18 - existing.length);
+    const needed = Math.max(0, 25 - existing.length);
 
     if (needed > 0) {
       const depthData = DEPTH_NAMES_BY_COUNTRY[club.country] || DEPTH_NAMES_BY_COUNTRY['イングランド'];
-      const tierBaseOvr = club.tier === 'Elite' ? 82 : club.tier === 'Upper' ? 77 : club.tier === 'Mid' ? 73 : 69;
+      const tierBaseOvr = club.tier === 'Elite' ? 80 : club.tier === 'Upper' ? 76 : club.tier === 'Mid' ? 72 : 68;
 
       for (let i = 0; i < needed; i++) {
         const pos = SQUAD_POSITIONS_TEMPLATE[(existing.length + i) % SQUAD_POSITIONS_TEMPLATE.length];
         
-        // Generate non-colliding unique name from dedicated pool
-        const fName = depthData.firstNames[(clubIdx * 7 + i) % depthData.firstNames.length];
-        const lName = depthData.lastNames[(clubIdx * 11 + i) % depthData.lastNames.length];
+        // Generate non-colliding authentic full name from dedicated pools
+        const fName = depthData.firstNames[(clubIdx * 5 + i * 2) % depthData.firstNames.length];
+        const lName = depthData.lastNames[(clubIdx * 7 + i * 3) % depthData.lastNames.length];
         const uniqueFullName = `${fName} ${lName}`;
-        const pId = `p_${club.id}_depth_${i + 1}`;
+        const pId = `p_${club.id}_depth_${existing.length + i + 1}`;
 
-        const ovr = Math.max(65, Math.min(84, tierBaseOvr + (i % 3) - 1));
-        const age = 20 + ((clubIdx * 5 + i * 3) % 12);
+        // Distribute age across the 6 specified brackets (16-19, 20-23, 24-28, 29-32, 33-36, 37+)
+        const age = SPEC_AGE_DISTRIBUTION[(clubIdx * 4 + i) % SPEC_AGE_DISTRIBUTION.length];
+        
+        // Realistic OVR based on age and club tier
+        let ovrModifier = (i % 3) - 1;
+        if (age <= 19) ovrModifier -= 4; // Young prospects have raw OVR but sky-high potential
+        else if (age <= 22) ovrModifier -= 1;
+        else if (age >= 34) ovrModifier -= 1;
+
+        const ovr = Math.max(62, Math.min(84, tierBaseOvr + ovrModifier));
+        
+        // Potential calculation based on age
+        const potential = age <= 19 
+          ? Math.min(94, ovr + 8 + (i % 6))
+          : age <= 23 
+            ? Math.min(91, ovr + 4 + (i % 4))
+            : age <= 28 
+              ? Math.max(ovr, ovr + (i % 2))
+              : ovr;
 
         const player = makeRealPlayer(
           pId,
@@ -140,10 +241,10 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
           age,
           club.country,
           ovr,
-          ovr + (age <= 22 ? 6 : age <= 25 ? 3 : 0),
-          club.tier === 'Elite' ? 18000000 : club.tier === 'Upper' ? 9000000 : 3000000,
-          club.tier === 'Elite' ? 65000 : club.tier === 'Upper' ? 35000 : 14000,
-          26 + ((i * 3) % 60),
+          potential,
+          club.tier === 'Elite' ? 16000000 : club.tier === 'Upper' ? 8000000 : 2500000,
+          club.tier === 'Elite' ? 55000 : club.tier === 'Upper' ? 30000 : 12000,
+          26 + ((i * 3) % 65),
           i % 3 === 0 ? '左' : '右',
           pos === 'GK' ? 'ショットストッパー' : pos === 'CB' ? 'ボール運べるCB' : 'チャンスメイカー'
         );
@@ -153,7 +254,7 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
     }
   });
 
-  const completeRegistry = generateFullJLeaguePlayers(registry);
+  const completeRegistry = ENABLE_J_LEAGUE ? generateFullJLeaguePlayers(registry) : registry;
   return completeRegistry;
 }
 
@@ -163,6 +264,19 @@ export function populateClubsWithDefaultSquads(
 ): { clubs: Record<string, Club>; players: Record<string, Player> } {
   // First run automated data integrity check
   const { players: cleanPlayers, clubs: cleanClubs } = checkPlayerDataIntegrity(playersRegistry, clubs);
+
+  // Sync club.playerIds strictly from cleanPlayers
+  Object.values(cleanClubs).forEach(club => {
+    club.playerIds = [];
+  });
+
+  Object.values(cleanPlayers).forEach(p => {
+    if (cleanClubs[p.clubId]) {
+      if (!cleanClubs[p.clubId].playerIds.includes(p.id)) {
+        cleanClubs[p.clubId].playerIds.push(p.id);
+      }
+    }
+  });
 
   // Update squad status defaults for each club
   Object.values(cleanClubs).forEach(club => {

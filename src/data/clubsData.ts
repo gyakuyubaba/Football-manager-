@@ -1943,9 +1943,19 @@ export const ALL_116_CLUBS: Club[] = [
 
   ];
 
-import { ALL_60_JLEAGUE_CLUBS } from './jLeagueData';
+// ==========================================
+// FEATURE TOGGLE: J.LEAGUE INTEGRATION
+// Formally enabled for 2025 J1 League (20 clubs) as requested
+// ==========================================
+export const ENABLE_J_LEAGUE = true;
 
-export const ALL_COMBINED_CLUBS: Club[] = [...ALL_116_CLUBS, ...ALL_60_JLEAGUE_CLUBS];
+import { J1_20_CLUBS } from './jLeagueData';
+
+export const ALL_COMBINED_CLUBS: Club[] = [
+  ...ALL_116_CLUBS,
+  ...J1_20_CLUBS
+];
+
 export const ALL_CLUBS = ALL_COMBINED_CLUBS;
 
 export const CLUBS_BY_ID: Record<string, Club> = ALL_COMBINED_CLUBS.reduce((acc, c) => {

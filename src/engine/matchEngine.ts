@@ -158,68 +158,87 @@ export function calculatePlayerInjuryRisk(
   player: Player,
   minute: number,
   pressIntensity: string,
-  isCongestedSchedule: boolean = false
+  isCongestedSchedule: boolean = false,
+  injuryFrequencySetting: 'low' | 'normal' | 'high' = 'low'
 ): number {
   // If already injured or suspended, skip
   if (player.injuryStatus === 'INJURED' || player.injury?.isInjured) return 0;
 
-  // Base risk tier by fatigue (Requirement 2)
-  let baseRisk = 0.0006;
-  if (player.fatigue <= 30) {
-    baseRisk = 0.0006; // 通常 (0~30)
-  } else if (player.fatigue <= 50) {
-    baseRisk = 0.0014; // 少し上昇 (31~50)
-  } else if (player.fatigue <= 70) {
-    baseRisk = 0.0032; // 明確に上昇 (51~70)
-  } else if (player.fatigue <= 85) {
-    baseRisk = 0.0068; // 高い (71~85)
+  // Rebalanced Base Risk per match phase check (Requirement 2: 怪我の発生頻度を大幅に下げる)
+  // Fatigue-scaled staged probability
+  let baseRisk = 0.00006;
+  if (player.fatigue <= 35) {
+    baseRisk = 0.00006; // 通常状態: 低確率
+  } else if (player.fatigue <= 55) {
+    baseRisk = 0.00015; // 疲労中: 少し上昇
+  } else if (player.fatigue <= 75) {
+    baseRisk = 0.00040; // 高疲労: 明確に上昇
+  } else if (player.fatigue <= 88) {
+    baseRisk = 0.00085; // かなり高疲労
   } else {
-    baseRisk = 0.0135; // 非常に高い (86~100)
+    baseRisk = 0.00160; // 極端な高疲労: 上昇
   }
 
   let multiplier = 1.0;
 
-  // Age factor (>31 elevated, >34 significantly elevated)
+  // Difficulty settings multiplier: Default to 'low' (少ない) as required
+  const diffMod = injuryFrequencySetting === 'low' ? 0.35 : injuryFrequencySetting === 'high' ? 1.4 : 0.70;
+  multiplier *= diffMod;
+
+  // Age factor (>31 slightly elevated, >34 moderately elevated)
   if (player.age >= 34) {
-    multiplier *= 1.35;
+    multiplier *= 1.25;
   } else if (player.age >= 31) {
-    multiplier *= 1.20;
+    multiplier *= 1.12;
   }
 
   // Tactical press factor
   if (pressIntensity === '非常に激しい' || pressIntensity === 'ゲーゲンプレス') {
-    multiplier *= 1.30;
+    multiplier *= 1.20;
   }
 
-  // Match minute factor (muscular fatigue ramps after 70')
+  // Match minute factor (muscular fatigue late in match)
   if (minute >= 75) {
-    multiplier *= 1.35;
+    multiplier *= 1.25;
   } else if (minute >= 60) {
-    multiplier *= 1.15;
+    multiplier *= 1.10;
   }
 
   // Congested schedule factor
   if (isCongestedSchedule) {
-    multiplier *= 1.25;
+    multiplier *= 1.20;
   }
 
-  // Sane ceiling to prevent ridiculous mass injuries
-  return Math.min(0.025, baseRisk * multiplier);
+  // Sane strict ceiling to prevent absurd pileup of injuries
+  return Math.min(0.005, baseRisk * multiplier);
 }
 
-// Authentic injury types and recovery ranges
+// Authentic injury types and recovery ranges: Weighted towards minor knocks/sprains (Requirement 2)
 export const INJURY_VARIETIES = [
-  { name: '右足首捻挫', days: 12 },
-  { name: '左足首捻挫', days: 14 },
-  { name: 'ハムストリング肉離れ (軽度)', days: 18 },
-  { name: 'ハムストリング肉離れ (中度)', days: 28 },
-  { name: 'ふくらはぎ筋膜炎', days: 10 },
-  { name: '大腿四頭筋肉離れ', days: 21 },
-  { name: '内転筋損傷', days: 16 },
-  { name: '膝内側側副靭帯損傷', days: 35 },
-  { name: '右足甲打撲', days: 7 },
-  { name: '肩鎖関節脱臼', days: 24 }
+  // 軽傷 (3日〜10日) - 大半を占める
+  { name: '足首の軽い捻挫', days: 5, weight: 28 },
+  { name: '打撲 (軽度)', days: 4, weight: 25 },
+  { name: 'ふくらはぎの張り', days: 6, weight: 22 },
+  { name: '内転筋の違和感', days: 7, weight: 18 },
+  { name: '足首捻挫 (軽度)', days: 10, weight: 15 },
+  // 中程度 (2週間〜4週間)
+  { name: 'ハムストリング肉離れ (軽度)', days: 14, weight: 8 },
+  { name: '大腿四頭筋肉離れ (軽度)', days: 16, weight: 6 },
+  { name: '肩鎖関節脱臼 (軽度)', days: 18, weight: 4 },
+  // 重傷 (長期離脱) - 非常に低確率 (< 3%)
+  { name: '膝内側側副靭帯損傷', days: 35, weight: 1.5 },
+  { name: '中足骨骨折', days: 50, weight: 0.8 }
 ];
+
+export function getRandomWeightedInjury(): { name: string; days: number } {
+  const total = INJURY_VARIETIES.reduce((acc, i) => acc + i.weight, 0);
+  let r = Math.random() * total;
+  for (const inj of INJURY_VARIETIES) {
+    r -= inj.weight;
+    if (r <= 0) return { name: inj.name, days: inj.days };
+  }
+  return { name: INJURY_VARIETIES[0].name, days: INJURY_VARIETIES[0].days };
+}
 
 // Commentary pools
 const GOAL_COMMENTARIES = [
@@ -243,6 +262,158 @@ const SAVE_COMMENTARIES = [
   (gk: string, shooter: string) => `【スーパーセーブ】至近距離からの${shooter}のヘディングシュートを${gk}が右手一本でバーの上へ弾き出す！`
 ];
 
+export function hashStringToNumber(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+export function createPRNG(seed: number) {
+  let s = Math.abs(seed) % 2147483647;
+  if (s === 0) s = 123456789;
+  return function() {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+/**
+ * Requirements 5, 6, 14: 選手OVRの試合活躍による長期的成長・衰退システム
+ * - 1試合で急激に変化しない（78 -> 78.2 -> 79...）
+ * - 複数試合・一定期間の成績（好調持続で+1〜+2、大活躍で+2〜+4、長期低調で低下）
+ * - ポジション別評価（GK/DF/MF/FW）
+ * - 若手(<=22歳)は成長しやすく、ベテラン(>=33歳)は緩やかな減退（活躍時は維持向上）
+ */
+export function processPlayerPerformanceGrowth(
+  player: Player,
+  performance: {
+    rating: number;
+    minutes?: number;
+    goals?: number;
+    assists?: number;
+    cleanSheet?: boolean;
+    isMotm?: boolean;
+    saves?: number;
+    tackles?: number;
+    passesCompleted?: number;
+  }
+): Player {
+  const currentExact = player.exactOvr ?? player.ovr;
+  const history = [...(player.matchRatingsHistory || []), performance.rating].slice(-10);
+  const avgRating = history.reduce((a, b) => a + b, 0) / history.length;
+
+  let delta = 0;
+
+  // 1. Single-match rating contribution
+  if (performance.rating >= 8.5) {
+    delta += 0.08;
+  } else if (performance.rating >= 7.5) {
+    delta += 0.04;
+  } else if (performance.rating >= 6.8) {
+    delta += 0.02;
+  } else if (performance.rating <= 5.5) {
+    delta -= 0.04;
+  }
+
+  // 2. Position-specific performance evaluations
+  const pos = player.position;
+  const isGK = pos === 'GK';
+  const isDF = ['CB', 'LB', 'RB', 'LWB', 'RWB'].includes(pos);
+  const isMF = ['CDM', 'CM', 'CAM', 'LM', 'RM'].includes(pos);
+  const isFW = ['ST', 'CF', 'LW', 'RW'].includes(pos);
+
+  if (isGK) {
+    if (performance.cleanSheet) delta += 0.05;
+    if (performance.saves && performance.saves >= 4) delta += 0.04;
+  } else if (isDF) {
+    if (performance.cleanSheet) delta += 0.04;
+    if (performance.tackles && performance.tackles >= 3) delta += 0.03;
+    if (performance.goals && performance.goals > 0) delta += 0.05; // Set piece goal
+  } else if (isMF) {
+    if (performance.assists && performance.assists > 0) delta += Math.min(0.06, performance.assists * 0.03);
+    if (performance.goals && performance.goals > 0) delta += Math.min(0.06, performance.goals * 0.03);
+    if (performance.passesCompleted && performance.passesCompleted >= 40) delta += 0.03;
+  } else if (isFW) {
+    if (performance.goals && performance.goals > 0) delta += Math.min(0.08, performance.goals * 0.04);
+    if (performance.assists && performance.assists > 0) delta += Math.min(0.04, performance.assists * 0.02);
+  }
+
+  if (performance.isMotm) {
+    delta += 0.05;
+  }
+
+  // 3. Multi-match streak & slump evaluation
+  if (history.length >= 3) {
+    if (avgRating >= 7.8) {
+      // Consistent standout form bonus
+      delta += 0.12;
+    } else if (avgRating >= 7.2) {
+      delta += 0.05;
+    } else if (avgRating <= 5.8) {
+      // Prolonged slump penalty (causes gradual OVR decline)
+      delta -= 0.12;
+    }
+  }
+
+  // 4. Age factor (young players develop faster, veterans decline unless in top form)
+  if (player.age <= 22) {
+    if (delta > 0) delta *= 1.4;
+  } else if (player.age >= 33) {
+    if (delta > 0) {
+      delta *= 0.75; // Veterans can still improve if performing well
+    } else {
+      delta *= 1.35; // Natural age-related slump tendency
+    }
+  }
+
+  const potentialCap = Math.min(99, player.potential || (player.ovr + 5));
+  const floorCap = Math.max(50, player.ovr - 5);
+
+  let newExact = currentExact + delta;
+  newExact = Math.max(floorCap, Math.min(potentialCap, newExact));
+  const roundedExact = Math.round(newExact * 10) / 10;
+  const newIntOvr = Math.round(roundedExact);
+
+  // Sync core physical and technical attributes proportionally to OVR change
+  const diff = newIntOvr - player.ovr;
+  const updatedAttributes = {
+    pace: player.pace,
+    shooting: player.shooting,
+    passing: player.passing,
+    dribbling: player.dribbling,
+    defending: player.defending,
+    physical: player.physical,
+    gk: player.gk
+  };
+
+  if (diff !== 0) {
+    if (isGK) {
+      updatedAttributes.gk = Math.max(50, Math.min(99, player.gk + diff));
+      updatedAttributes.passing = Math.max(50, Math.min(99, player.passing + Math.round(diff * 0.5)));
+    } else if (isFW) {
+      updatedAttributes.shooting = Math.max(50, Math.min(99, player.shooting + diff));
+      updatedAttributes.pace = Math.max(50, Math.min(99, player.pace + Math.round(diff * 0.5)));
+    } else if (isMF) {
+      updatedAttributes.passing = Math.max(50, Math.min(99, player.passing + diff));
+      updatedAttributes.dribbling = Math.max(50, Math.min(99, player.dribbling + diff));
+    } else {
+      updatedAttributes.defending = Math.max(50, Math.min(99, player.defending + diff));
+      updatedAttributes.physical = Math.max(50, Math.min(99, player.physical + diff));
+    }
+  }
+
+  return {
+    ...player,
+    ...updatedAttributes,
+    exactOvr: roundedExact,
+    ovr: newIntOvr,
+    matchRatingsHistory: history
+  };
+}
+
 // -------------------------------------------------------------
 // 【3 & 4. 試合シミュレーションエンジン (0-0過多解消 & 時間帯展開)】
 // -------------------------------------------------------------
@@ -252,13 +423,18 @@ export function simulateFullMatch(
   awayClub: Club,
   homeTactics: TeamTactics,
   awayTactics: TeamTactics,
-  playersRegistry: Record<string, Player>
+  playersRegistry: Record<string, Player>,
+  forcedSeed?: number
 ): {
   fixture: MatchFixture;
   updatedPlayers: Record<string, Player>;
 } {
   const events: MatchEvent[] = [];
   const updatedPlayers = { ...playersRegistry };
+
+  // Requirement 7 & 8: MATCH_SIMULATION_SEED guarantees 100% deterministic scenario
+  const effectiveSeed = forcedSeed ?? fixture.matchSeed ?? hashStringToNumber(`${fixture.id}_${homeClub.id}_${awayClub.id}_${fixture.date || '2026-08-01'}`);
+  const rng = createPRNG(effectiveSeed);
 
   // Sanitize on-pitch starters (filter out any injured, suspended, or invalid club membership)
   const sanitizeStarters = (club: Club, tactics: TeamTactics): string[] => {
@@ -303,20 +479,65 @@ export function simulateFullMatch(
 
   const homeFWPower = getSubRating(homeStartersList, ['ST', 'CF', 'RW', 'LW'], 72);
   const homeMFPower = getSubRating(homeStartersList, ['CAM', 'CM', 'CDM', 'RM', 'LM'], 72);
-  const homeDFPower = getSubRating(homeStartersList, ['CB', 'RB', 'LB'], 72);
+  const homeDFPower = getSubRating(homeStartersList, ['CB', 'RB', 'LB', 'LWB', 'RWB'], 72);
   const homeGKPower = homeStartersList.find(p => p.position === 'GK')?.ovr || 72;
 
   const awayFWPower = getSubRating(awayStartersList, ['ST', 'CF', 'RW', 'LW'], 72);
   const awayMFPower = getSubRating(awayStartersList, ['CAM', 'CM', 'CDM', 'RM', 'LM'], 72);
-  const awayDFPower = getSubRating(awayStartersList, ['CB', 'RB', 'LB'], 72);
+  const awayDFPower = getSubRating(awayStartersList, ['CB', 'RB', 'LB', 'LWB', 'RWB'], 72);
   const awayGKPower = awayStartersList.find(p => p.position === 'GK')?.ovr || 72;
 
-  // Home advantage (+8% home power)
-  const homeAttack = (homeFWPower * 0.55 + homeMFPower * 0.45) * 1.08;
-  const awayDefense = awayDFPower * 0.65 + awayGKPower * 0.35;
+  // Analyze formation profiles and tactical setup (Requirement 5 & 6)
+  const getFormationProfile = (tactics: TeamTactics, startersList: Player[]) => {
+    const f = tactics.formation;
+    const is5Back = f.startsWith('5-') || startersList.filter(p => ['CB', 'LB', 'RB', 'LWB', 'RWB'].includes(p.position)).length >= 5;
+    const is3Back = f.startsWith('3-');
+    const is4Back = f.startsWith('4-');
 
-  const awayAttack = awayFWPower * 0.55 + awayMFPower * 0.45;
-  const homeDefense = (homeDFPower * 0.65 + homeGKPower * 0.35) * 1.04;
+    const wingCount = startersList.filter(p => ['LW', 'RW', 'LM', 'RM', 'LWB', 'RWB'].includes(p.position)).length;
+    const centralCount = startersList.filter(p => ['CAM', 'CM', 'CDM', 'ST', 'CF'].includes(p.position)).length;
+    const fwCount = startersList.filter(p => ['ST', 'CF', 'RW', 'LW'].includes(p.position)).length;
+    const mfCount = startersList.filter(p => ['CDM', 'CM', 'CAM', 'LM', 'RM'].includes(p.position)).length;
+
+    // Custom pitch positioning metrics (Requirement 6: free positioning influence)
+    const avgPitchY = tactics.lineup.starters.length > 0 
+      ? tactics.lineup.starters.reduce((acc, s) => acc + (s.pitchY || 50), 0) / tactics.lineup.starters.length 
+      : 50;
+    const pushUpFactor = Math.max(0.85, Math.min(1.18, (55 - avgPitchY) * 0.012 + 1.0));
+
+    return {
+      is5Back,
+      is3Back,
+      is4Back,
+      wingCount,
+      centralCount,
+      fwCount,
+      mfCount,
+      pushUpFactor,
+      isWingOriented: f === '4-3-3' || f === '4-2-4' || f === '3-4-3' || wingCount >= 4,
+      isCamDominant: f === '4-2-3-1' || f === '4-3-1-2' || f === '5-2-2-1',
+      isMidfieldDominant: f === '3-5-2' || f === '4-5-1' || f === '4-1-4-1' || mfCount >= 5,
+      isSolidDefense: is5Back || f === '5-3-2' || f === '5-4-1'
+    };
+  };
+
+  const homeProfile = getFormationProfile(homeTactics, homeStartersList);
+  const awayProfile = getFormationProfile(awayTactics, awayStartersList);
+
+  // Home advantage (+6% home power) and formation tactical influence (Requirement 5)
+  let homeAttack = (homeFWPower * 0.55 + homeMFPower * 0.45) * 1.06 * homeProfile.pushUpFactor;
+  if (homeProfile.isWingOriented || homeProfile.fwCount >= 3) homeAttack *= 1.05;
+  if (homeProfile.isMidfieldDominant) homeAttack *= 1.03;
+
+  let awayDefense = awayDFPower * 0.65 + awayGKPower * 0.35;
+  if (awayProfile.isSolidDefense) awayDefense *= 1.14;
+
+  let awayAttack = (awayFWPower * 0.55 + awayMFPower * 0.45) * awayProfile.pushUpFactor;
+  if (awayProfile.isWingOriented || awayProfile.fwCount >= 3) awayAttack *= 1.05;
+  if (awayProfile.isMidfieldDominant) awayAttack *= 1.03;
+
+  let homeDefense = (homeDFPower * 0.65 + homeGKPower * 0.35) * 1.03;
+  if (homeProfile.isSolidDefense) homeDefense *= 1.14;
 
   let homeScore = 0;
   let awayScore = 0;
@@ -332,7 +553,7 @@ export function simulateFullMatch(
   const yellowCardCounts: Record<string, number> = {};
   const playerRatings: Record<string, number> = {};
   [...homeStartersList, ...awayStartersList].forEach(p => {
-    playerRatings[p.id] = 6.0 + (Math.random() * 0.6);
+    playerRatings[p.id] = +(6.0 + (rng() * 0.6)).toFixed(1);
   });
 
   // -------------------------------------------------------------
@@ -362,7 +583,7 @@ export function simulateFullMatch(
   ];
 
   timePhases.forEach(({ min, phase }) => {
-    const jitter = Math.floor(Math.random() * 3) - 1;
+    const jitter = Math.floor(rng() * 3) - 1;
     const eventMin = Math.max(1, Math.min(94, min + jitter));
 
     const currentHomePitch = homePitchPlayers.map(id => updatedPlayers[id]).filter(Boolean);
@@ -396,16 +617,16 @@ export function simulateFullMatch(
     const homeAttackRatio = Math.max(0.70, Math.min(1.4, homeAttack / Math.max(40, awayDefense)));
     const homeChanceThreshold = 0.42 * homeAttackRatio * phaseChanceMultiplier * homeTrailingBonus;
 
-    if (Math.random() < homeChanceThreshold && currentHomePitch.length > 0) {
+    if (rng() < homeChanceThreshold && currentHomePitch.length > 0) {
       homeShots++;
       const onTargetChance = 0.48 + (homeFWPower - awayGKPower) * 0.005;
-      const onTarget = Math.random() < Math.max(0.32, Math.min(0.68, onTargetChance));
+      const onTarget = rng() < Math.max(0.32, Math.min(0.68, onTargetChance));
 
       if (onTarget) {
         homeShotsOnTarget++;
         // Goal conversion probability (Requirement 3: realistic goal distribution)
         const conversionChance = 0.38 + (homeFWPower - awayGKPower) * 0.006;
-        const isGoal = Math.random() < Math.max(0.24, Math.min(0.55, conversionChance));
+        const isGoal = rng() < Math.max(0.24, Math.min(0.55, conversionChance));
 
         if (isGoal) {
           homeScore++;
@@ -414,7 +635,7 @@ export function simulateFullMatch(
           const scorer = selectScorer(currentHomePitch.length > 0 ? currentHomePitch : homeStartersList, homeTactics);
           const assister = selectAssister(currentHomePitch.length > 0 ? currentHomePitch : homeStartersList, scorer.id);
 
-          const commentaryFn = GOAL_COMMENTARIES[Math.floor(Math.random() * GOAL_COMMENTARIES.length)];
+          const commentaryFn = GOAL_COMMENTARIES[Math.floor(rng() * GOAL_COMMENTARIES.length)];
           events.push({
             minute: eventMin,
             type: 'goal',
@@ -431,9 +652,9 @@ export function simulateFullMatch(
         } else {
           // Goalkeeper Save
           const awayGK = currentAwayPitch.find(p => p.position === 'GK') || currentAwayPitch[0] || awayStartersList[0];
-          const shooter = currentHomePitch[Math.floor(Math.random() * currentHomePitch.length)] || homeStartersList[0];
+          const shooter = currentHomePitch[Math.floor(rng() * currentHomePitch.length)] || homeStartersList[0];
           if (awayGK && shooter) {
-            const saveFn = SAVE_COMMENTARIES[Math.floor(Math.random() * SAVE_COMMENTARIES.length)];
+            const saveFn = SAVE_COMMENTARIES[Math.floor(rng() * SAVE_COMMENTARIES.length)];
             events.push({
               minute: eventMin,
               type: 'save',
@@ -447,10 +668,10 @@ export function simulateFullMatch(
           }
         }
       } else {
-        if (Math.random() < 0.12) {
-          const shooter = currentHomePitch[Math.floor(Math.random() * currentHomePitch.length)] || homeStartersList[0];
+        if (rng() < 0.12) {
+          const shooter = currentHomePitch[Math.floor(rng() * currentHomePitch.length)] || homeStartersList[0];
           if (shooter) {
-            const woodFn = WOODWORK_COMMENTARIES[Math.floor(Math.random() * WOODWORK_COMMENTARIES.length)];
+            const woodFn = WOODWORK_COMMENTARIES[Math.floor(rng() * WOODWORK_COMMENTARIES.length)];
             events.push({
               minute: eventMin,
               type: 'woodwork',
@@ -468,15 +689,15 @@ export function simulateFullMatch(
     const awayAttackRatio = Math.max(0.70, Math.min(1.4, awayAttack / Math.max(40, homeDefense)));
     const awayChanceThreshold = 0.38 * awayAttackRatio * phaseChanceMultiplier * awayTrailingBonus;
 
-    if (Math.random() < awayChanceThreshold && currentAwayPitch.length > 0) {
+    if (rng() < awayChanceThreshold && currentAwayPitch.length > 0) {
       awayShots++;
       const onTargetChance = 0.48 + (awayFWPower - homeGKPower) * 0.005;
-      const onTarget = Math.random() < Math.max(0.32, Math.min(0.68, onTargetChance));
+      const onTarget = rng() < Math.max(0.32, Math.min(0.68, onTargetChance));
 
       if (onTarget) {
         awayShotsOnTarget++;
         const conversionChance = 0.36 + (awayFWPower - homeGKPower) * 0.006;
-        const isGoal = Math.random() < Math.max(0.22, Math.min(0.52, conversionChance));
+        const isGoal = rng() < Math.max(0.22, Math.min(0.52, conversionChance));
 
         if (isGoal) {
           awayScore++;
@@ -484,7 +705,7 @@ export function simulateFullMatch(
           const scorer = selectScorer(currentAwayPitch.length > 0 ? currentAwayPitch : awayStartersList, awayTactics);
           const assister = selectAssister(currentAwayPitch.length > 0 ? currentAwayPitch : awayStartersList, scorer.id);
 
-          const commentaryFn = GOAL_COMMENTARIES[Math.floor(Math.random() * GOAL_COMMENTARIES.length)];
+          const commentaryFn = GOAL_COMMENTARIES[Math.floor(rng() * GOAL_COMMENTARIES.length)];
           events.push({
             minute: eventMin,
             type: 'goal',
@@ -501,9 +722,9 @@ export function simulateFullMatch(
         } else {
           // Goalkeeper Save
           const homeGK = currentHomePitch.find(p => p.position === 'GK') || currentHomePitch[0] || homeStartersList[0];
-          const shooter = currentAwayPitch[Math.floor(Math.random() * currentAwayPitch.length)] || awayStartersList[0];
+          const shooter = currentAwayPitch[Math.floor(rng() * currentAwayPitch.length)] || awayStartersList[0];
           if (homeGK && shooter) {
-            const saveFn = SAVE_COMMENTARIES[Math.floor(Math.random() * SAVE_COMMENTARIES.length)];
+            const saveFn = SAVE_COMMENTARIES[Math.floor(rng() * SAVE_COMMENTARIES.length)];
             events.push({
               minute: eventMin,
               type: 'save',
@@ -517,10 +738,10 @@ export function simulateFullMatch(
           }
         }
       } else {
-        if (Math.random() < 0.12) {
-          const shooter = currentAwayPitch[Math.floor(Math.random() * currentAwayPitch.length)] || awayStartersList[0];
+        if (rng() < 0.12) {
+          const shooter = currentAwayPitch[Math.floor(rng() * currentAwayPitch.length)] || awayStartersList[0];
           if (shooter) {
-            const woodFn = WOODWORK_COMMENTARIES[Math.floor(Math.random() * WOODWORK_COMMENTARIES.length)];
+            const woodFn = WOODWORK_COMMENTARIES[Math.floor(rng() * WOODWORK_COMMENTARIES.length)];
             events.push({
               minute: eventMin,
               type: 'woodwork',
@@ -535,15 +756,15 @@ export function simulateFullMatch(
     }
 
     // --- CARDS & FOULS (with second-yellow send off rule) ---
-    if (Math.random() < 0.08) {
-      const isHomeFoul = Math.random() < 0.5;
+    if (rng() < 0.08) {
+      const isHomeFoul = rng() < 0.5;
       const targetClub = isHomeFoul ? homeClub : awayClub;
       const targetPitch = isHomeFoul ? currentHomePitch : currentAwayPitch;
 
       if (isHomeFoul) homeFouls++; else awayFouls++;
 
       if (targetPitch.length > 0) {
-        const offender = targetPitch[Math.floor(Math.random() * targetPitch.length)];
+        const offender = targetPitch[Math.floor(rng() * targetPitch.length)];
         const priorYellows = yellowCardCounts[offender.id] || 0;
 
         if (priorYellows === 1) {
@@ -586,25 +807,30 @@ export function simulateFullMatch(
       }
     }
 
-    // --- IN-MATCH INJURY RISK SYSTEM (Requirement 2 & 1) ---
+    // --- IN-MATCH INJURY RISK SYSTEM (Requirement 2: 低頻度・軽傷中心・重復加算防止) ---
     const allOnPitch = [...currentHomePitch, ...currentAwayPitch];
-    for (const player of allOnPitch) {
-      const isHome = currentHomePitch.some(p => p.id === player.id);
-      const pressStyle = isHome ? homeTactics.instructions.pressIntensity : awayTactics.instructions.pressIntensity;
-      const risk = calculatePlayerInjuryRisk(player, eventMin, pressStyle);
+    const matchInjuriesCount = events.filter(e => e.type === 'injury').length;
+    if (matchInjuriesCount < 2) {
+      for (const player of allOnPitch) {
+        const isHome = currentHomePitch.some(p => p.id === player.id);
+        const teamInjuries = events.filter(e => e.type === 'injury' && e.clubId === (isHome ? homeClub.id : awayClub.id)).length;
+        if (teamInjuries >= 1) continue; // At most 1 injury per team in a single match
 
-      if (Math.random() < risk) {
-        const chosenInj = INJURY_VARIETIES[Math.floor(Math.random() * INJURY_VARIETIES.length)];
-        const targetClub = isHome ? homeClub : awayClub;
+        const pressStyle = isHome ? homeTactics.instructions.pressIntensity : awayTactics.instructions.pressIntensity;
+        const risk = calculatePlayerInjuryRisk(player, eventMin, pressStyle);
 
-        events.push({
-          minute: eventMin,
-          type: 'injury',
-          clubId: targetClub.id,
-          playerId: player.id,
-          playerName: player.name,
-          description: `【負傷発生】${player.name}がピッチ上で足を痛め倒れ込む。メディカルスタッフの初期診断：${chosenInj.name}（全治約${chosenInj.days}日・プレー続行不可）`
-        });
+        if (rng() < risk) {
+          const chosenInj = getRandomWeightedInjury();
+          const targetClub = isHome ? homeClub : awayClub;
+
+          events.push({
+            minute: eventMin,
+            type: 'injury',
+            clubId: targetClub.id,
+            playerId: player.id,
+            playerName: player.name,
+            description: `【負傷発生】${player.name}がピッチ上で足を痛め倒れ込む。メディカルスタッフの初期診断：${chosenInj.name}（全治約${chosenInj.days}日・プレー続行不可）`
+          });
 
         // Update player record immediately
         if (updatedPlayers[player.id]) {
@@ -634,10 +860,58 @@ export function simulateFullMatch(
         break;
       }
     }
+  }
   });
 
   // Sort events chronologically
   events.sort((a, b) => a.minute - b.minute);
+
+  // Requirement 11: Cup Tournament decisive extra time and penalties if drawn
+  let extraTimePlayed = false;
+  let penaltyShootout: { homeScore: number; awayScore: number } | undefined = undefined;
+
+  const isCupTie = fixture.competition.includes('cup') || 
+                   fixture.competition === 'copa-del-rey' || 
+                   fixture.competition === 'dfb-pokal' || 
+                   fixture.competition === 'coppa-italia' || 
+                   fixture.competition === 'coupe-de-france' ||
+                   fixture.competition === 'ucl' ||
+                   fixture.competition === 'uel';
+
+  if (isCupTie && homeScore === awayScore) {
+    extraTimePlayed = true;
+    const etHomeGoals = rng() < 0.22 ? 1 : 0;
+    const etAwayGoals = rng() < 0.22 ? 1 : 0;
+    homeScore += etHomeGoals;
+    awayScore += etAwayGoals;
+    if (etHomeGoals > 0) {
+      events.push({ minute: 104, type: 'goal', clubId: homeClub.id, playerId: homeStartersList[0]?.id || '', playerName: homeStartersList[0]?.name || '', description: `【延長戦ゴール！】${homeStartersList[0]?.name}が劇的な勝ち越しゴール！` });
+    }
+    if (etAwayGoals > 0) {
+      events.push({ minute: 116, type: 'goal', clubId: awayClub.id, playerId: awayStartersList[0]?.id || '', playerName: awayStartersList[0]?.name || '', description: `【延長戦ゴール！】${awayStartersList[0]?.name}が土壇場で同点ゴール！` });
+    }
+
+    if (homeScore === awayScore) {
+      let pHome = 0;
+      let pAway = 0;
+      for (let k = 0; k < 5; k++) {
+        if (rng() < 0.75) pHome++;
+        if (rng() < 0.75) pAway++;
+      }
+      if (pHome === pAway) {
+        if (rng() < 0.5) pHome++; else pAway++;
+      }
+      penaltyShootout = { homeScore: pHome, awayScore: pAway };
+      events.push({
+        minute: 120,
+        type: 'penalty',
+        clubId: pHome > pAway ? homeClub.id : awayClub.id,
+        playerId: (pHome > pAway ? homeStartersList[0]?.id : awayStartersList[0]?.id) || '',
+        playerName: (pHome > pAway ? homeClub.name : awayClub.name),
+        description: `【PK戦決着】PK戦 (${pHome} - ${pAway}) により${pHome > pAway ? homeClub.name : awayClub.name}の勝利が決定！`
+      });
+    }
+  }
 
   const homePossession = Math.min(72, Math.max(28, Math.round((homeAttack / (homeAttack + awayAttack)) * 100)));
   const homeXG = +(homeShotsOnTarget * 0.32 + (homeShots - homeShotsOnTarget) * 0.06).toFixed(2);
@@ -652,7 +926,7 @@ export function simulateFullMatch(
     }
   });
 
-  // Fatigue accumulation & match stats updates for starters
+  // Fatigue accumulation, match stats, and OVR Growth updates for starters (Requirements 5, 6, 14)
   [...homeStartersList, ...awayStartersList].forEach(p => {
     const updated = updatedPlayers[p.id];
     if (updated) {
@@ -672,10 +946,25 @@ export function simulateFullMatch(
       const matchRating = playerRatings[p.id] || 6.5;
       updated.stats.avgRating = +( (currAvg * (currApps - 1) + matchRating) / currApps ).toFixed(2);
 
-      if (p.position === 'GK' || ['CB', 'LB', 'RB'].includes(p.position)) {
-        if (p.clubId === homeClub.id && awayScore === 0) updated.stats.cleanSheets += 1;
-        if (p.clubId === awayClub.id && homeScore === 0) updated.stats.cleanSheets += 1;
+      const isCleanSheet = (p.position === 'GK' || ['CB', 'LB', 'RB', 'LWB', 'RWB'].includes(p.position)) && 
+        ((p.clubId === homeClub.id && awayScore === 0) || (p.clubId === awayClub.id && homeScore === 0));
+
+      if (isCleanSheet) {
+        updated.stats.cleanSheets += 1;
       }
+
+      // Requirements 5, 6, 14: Continuous long-term incremental performance growth
+      const growthResult = processPlayerPerformanceGrowth(updated, {
+        rating: matchRating,
+        minutes: 90,
+        goals: scored,
+        assists: assisted,
+        cleanSheet: isCleanSheet,
+        isMotm: motmId === p.id
+      });
+      updated.exactOvr = growthResult.exactOvr;
+      updated.ovr = growthResult.ovr;
+      updated.matchRatingsHistory = growthResult.matchRatingsHistory;
     }
   });
 
@@ -689,7 +978,7 @@ export function simulateFullMatch(
     corners: [Math.max(1, homeCorners), Math.max(1, awayCorners)],
     fouls: [Math.max(homeFouls, 4), Math.max(awayFouls, 4)],
     passesCompleted: [Math.floor(homePossession * 8.5), Math.floor((100 - homePossession) * 8.5)],
-    passAccuracy: [83 + Math.floor(Math.random() * 7), 81 + Math.floor(Math.random() * 7)],
+    passAccuracy: [83 + Math.floor(rng() * 7), 81 + Math.floor(rng() * 7)],
     playerRatings
   };
 
@@ -698,6 +987,8 @@ export function simulateFullMatch(
     status: 'finished',
     homeScore,
     awayScore,
+    extraTimePlayed,
+    penaltyShootout,
     events,
     stats,
     motmPlayerId: motmId,
@@ -806,4 +1097,76 @@ export function generateAssistantCoachAdvice(
   } else {
     return '「ビハインドを背負っています。相手の素早い攻守の切り替えに後手を踏んでいます。プレスの強度を一段階引き上げ、前線からアグレッシブにボールを奪いに行く修正をお勧めします。疲労の見える選手は早めの交代を検討してください。」';
   }
+}
+
+/**
+ * Requirement 7: 「試合中の結果」と「即時スキップ」を完全同期
+ * - 前半2-0で即時スキップした場合、前半の2-0を絶対に消さず、残り時間だけを追加計算
+ * - 最終結果は必ず 2-0 以上の得点状況から継続し、0-1等の矛盾を100%排除
+ */
+export function fastForwardRemainingMatch(
+  currentMinute: number,
+  currentEvents: MatchEvent[],
+  currentScore: [number, number],
+  fixture: MatchFixture,
+  homeClub: Club,
+  awayClub: Club,
+  homeTactics: TeamTactics,
+  awayTactics: TeamTactics,
+  playersRegistry: Record<string, Player>,
+  simulatedResult?: { fixture: MatchFixture; updatedPlayers: Record<string, Player> }
+): {
+  fixture: MatchFixture;
+  updatedPlayers: Record<string, Player>;
+} {
+  // If simulatedResult exists and its base scenario matches, use its events for the remaining period
+  const fullResult = simulatedResult || simulateFullMatch(fixture, homeClub, awayClub, homeTactics, awayTactics, playersRegistry);
+  
+  // Events that already occurred up to currentMinute
+  const lockedEvents = [...currentEvents];
+  
+  // Calculate remaining events (minute > currentMinute)
+  const remainingEvents = (fullResult.fixture.events || []).filter(e => e.minute > currentMinute);
+  
+  // Goals scored in the remaining time
+  const remainingHomeGoals = remainingEvents.filter(e => e.type === 'goal' && e.clubId === homeClub.id).length;
+  const remainingAwayGoals = remainingEvents.filter(e => e.type === 'goal' && e.clubId === awayClub.id).length;
+  
+  // Guaranteed cumulative score: current score + any new goals in remaining time
+  const finalHomeScore = currentScore[0] + remainingHomeGoals;
+  const finalAwayScore = currentScore[1] + remainingAwayGoals;
+  
+  const allFinalEvents = [...lockedEvents, ...remainingEvents].sort((a, b) => a.minute - b.minute);
+  
+  // Check cup tie decisive outcome if drawn
+  let extraTimePlayed = fullResult.fixture.extraTimePlayed || false;
+  let penaltyShootout = fullResult.fixture.penaltyShootout;
+  const isCupTie = fixture.competition.includes('cup') || 
+                   fixture.competition === 'copa-del-rey' || 
+                   fixture.competition === 'dfb-pokal' || 
+                   fixture.competition === 'coppa-italia' || 
+                   fixture.competition === 'coupe-de-france' ||
+                   fixture.competition === 'ucl' ||
+                   fixture.competition === 'uel';
+  
+  if (isCupTie && finalHomeScore === finalAwayScore && !penaltyShootout) {
+    extraTimePlayed = true;
+    penaltyShootout = { homeScore: 5, awayScore: 4 }; // Decisive shootout
+  }
+  
+  const updatedFixture: MatchFixture = {
+    ...fullResult.fixture,
+    status: 'finished',
+    homeScore: finalHomeScore,
+    awayScore: finalAwayScore,
+    extraTimePlayed,
+    penaltyShootout,
+    events: allFinalEvents,
+    isResultApplied: false
+  };
+  
+  return {
+    fixture: updatedFixture,
+    updatedPlayers: fullResult.updatedPlayers
+  };
 }

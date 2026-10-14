@@ -1,4 +1,4 @@
-import { Player, Club, GameWorldState, StandingsRow, MatchFixture, TeamTactics } from '../types/game';
+import { Player, Club, GameWorldState, StandingsRow, MatchFixture, TeamTactics, YouthProspect, Position, PlayStyle, PlayerPersonality } from '../types/game';
 
 export interface IntegrityCheckResult {
   isValid: boolean;
@@ -86,6 +86,76 @@ export function CLUB_MEMBERSHIP_CHECK(
     valid: mismatches.length === 0,
     mismatches,
     logs
+  };
+}
+
+/**
+ * 【Requirement 5 & TEST 13】PLAYER_DATABASE_INTEGRITY_CHECK
+ * - 重複playerId
+ * - 同一人物の重複
+ * - 複数クラブ所属
+ * - 存在しないクラブ
+ * - 存在しないポジション
+ */
+export function PLAYER_DATABASE_INTEGRITY_CHECK(
+  players: Record<string, Player>,
+  clubs: Record<string, Club>
+): {
+  valid: boolean;
+  errors: string[];
+  totalPlayers: number;
+  averagePerClub: number;
+} {
+  const errors: string[] = [];
+  const seenIds = new Set<string>();
+  const playerInMultipleClubs = new Map<string, string>();
+  const VALID_POSITIONS: string[] = ['GK', 'CB', 'LB', 'RB', 'LWB', 'RWB', 'CDM', 'CM', 'CAM', 'LM', 'RM', 'LW', 'RW', 'ST', 'CF'];
+
+  // Check clubs rosters
+  for (const [cId, club] of Object.entries(clubs)) {
+    const clubPlayerIds = club.playerIds || [];
+    clubPlayerIds.forEach(pId => {
+      if (playerInMultipleClubs.has(pId)) {
+        errors.push(`[複数クラブ所属] 選手ID "${pId}" がクラブ "${playerInMultipleClubs.get(pId)}" と "${cId}" に二重登録されています。`);
+      } else {
+        playerInMultipleClubs.set(pId, cId);
+      }
+    });
+  }
+
+  // Check players
+  for (const [pId, p] of Object.entries(players)) {
+    // 1. Duplicate playerId check
+    if (seenIds.has(pId)) {
+      errors.push(`[重複playerId] ID "${pId}" が重複しています。`);
+    }
+    seenIds.add(pId);
+
+    // 2. Non-existent club
+    if (!p.clubId || !clubs[p.clubId]) {
+      errors.push(`[存在しないクラブ] 選手 "${p.name}" (${pId}) の所属先 "${p.clubId}" が存在しません。`);
+    } else {
+      const club = clubs[p.clubId];
+      if (!club.playerIds.includes(pId)) {
+        errors.push(`[名簿不一致] 選手 "${p.name}" (${pId}) が所属クラブ "${club.name}" の名簿に含まれていません。`);
+      }
+    }
+
+    // 3. Valid position check
+    if (!p.position || !VALID_POSITIONS.includes(p.position)) {
+      errors.push(`[存在しないポジション] 選手 "${p.name}" (${pId}) のポジション "${p.position}" が不正です。`);
+    }
+  }
+
+  const totalPlayers = Object.keys(players).length;
+  const clubCount = Object.keys(clubs).length || 1;
+  const averagePerClub = Math.round(totalPlayers / clubCount);
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    totalPlayers,
+    averagePerClub
   };
 }
 
@@ -288,7 +358,12 @@ export function checkPlayerDataIntegrity(
 }
 
 /**
- * Auto replace ineligible starters and bench players with highest OVR healthy players
+ * PLAYER_ELIGIBILITY_CHECK & Auto Replacement
+ * Priority:
+ * 1. Exact same position on bench
+ * 2. Adaptable position on bench
+ * 3. Suitable reserve player
+ * 4. Leave vacant if no suitable player and notify user
  */
 export function autoReplaceIneligiblePlayers(
   starters: string[],
@@ -296,39 +371,82 @@ export function autoReplaceIneligiblePlayers(
   clubId: string,
   players: Record<string, Player>,
   currentDate?: string
-): { starters: string[]; bench: string[]; replacedCount: number } {
+): { starters: string[]; bench: string[]; replacedCount: number; vacantCount: number } {
   const currentStarterIds = [...starters];
   let currentBenchIds = [...bench];
   let replacedCount = 0;
+  let vacantCount = 0;
 
   const clubPlayers = Object.values(players).filter(p => p.clubId === clubId);
 
-  const isHealthy = (p: Player): boolean => {
+  const isEligible = (p: Player | undefined): boolean => {
+    if (!p) return false;
+    if (p.clubId !== clubId) return false;
     if (p.injury?.isInjured || p.injuryStatus === 'INJURED') return false;
     if (currentDate && p.injuryReturnDate && p.injuryReturnDate > currentDate) return false;
     if (p.suspension?.isSuspended || (p.suspension?.matchesRemaining || 0) > 0) return false;
     return true;
   };
 
-  const healthyBench = currentBenchIds.map(id => players[id]).filter(p => p && isHealthy(p));
+  const ADAPTABLE_MAP: Record<string, string[]> = {
+    ST: ['CF', 'RW', 'LW', 'CAM'],
+    CF: ['ST', 'CAM', 'RW', 'LW'],
+    LW: ['LM', 'RW', 'ST', 'CAM'],
+    RW: ['RM', 'LW', 'ST', 'CAM'],
+    CAM: ['CM', 'CF', 'LW', 'RW'],
+    CM: ['CDM', 'CAM', 'RM', 'LM'],
+    CDM: ['CM', 'CB'],
+    LM: ['LW', 'LWB', 'CM', 'RM'],
+    RM: ['RW', 'RWB', 'CM', 'LM'],
+    LB: ['LWB', 'CB', 'RB'],
+    RB: ['RWB', 'CB', 'LB'],
+    LWB: ['LB', 'LM'],
+    RWB: ['RB', 'RM'],
+    CB: ['CDM', 'LB', 'RB'],
+    GK: ['GK']
+  };
+
+  const healthyBench = currentBenchIds.map(id => players[id]).filter((p): p is Player => !!p && isEligible(p));
   const healthyReserves = clubPlayers
-    .filter(p => !currentStarterIds.includes(p.id) && !currentBenchIds.includes(p.id) && isHealthy(p))
+    .filter(p => !currentStarterIds.includes(p.id) && !currentBenchIds.includes(p.id) && isEligible(p))
     .sort((a, b) => b.ovr - a.ovr);
 
   // 1. Replace ineligible starters
   currentStarterIds.forEach((pId, idx) => {
     const p = players[pId];
-    if (!p || !isHealthy(p) || p.squadStatus === 'OUT_OF_SQUAD') {
+    if (!p || !isEligible(p) || p.squadStatus === 'OUT_OF_SQUAD') {
+      const targetPos = p?.position || 'CM';
       let candidate: Player | undefined;
-      const benchCandidateIdx = healthyBench.findIndex(bp => bp.position === (p?.position || 'CM'));
-      if (benchCandidateIdx !== -1) {
-        candidate = healthyBench.splice(benchCandidateIdx, 1)[0];
+
+      // Priority 1: Exact position bench player
+      const benchExactIdx = healthyBench.findIndex(bp => bp.position === targetPos);
+      if (benchExactIdx !== -1) {
+        candidate = healthyBench.splice(benchExactIdx, 1)[0];
         currentBenchIds = currentBenchIds.filter(id => id !== candidate!.id);
-      } else if (healthyBench.length > 0) {
-        candidate = healthyBench.shift();
-        currentBenchIds = currentBenchIds.filter(id => id !== candidate!.id);
-      } else if (healthyReserves.length > 0) {
-        candidate = healthyReserves.shift();
+      }
+
+      // Priority 2: Adaptable position bench player
+      if (!candidate) {
+        const adaptable = ADAPTABLE_MAP[targetPos] || [];
+        const benchAdaptIdx = healthyBench.findIndex(bp => adaptable.includes(bp.position));
+        if (benchAdaptIdx !== -1) {
+          candidate = healthyBench.splice(benchAdaptIdx, 1)[0];
+          currentBenchIds = currentBenchIds.filter(id => id !== candidate!.id);
+        }
+      }
+
+      // Priority 3: Suitable reserve player
+      if (!candidate) {
+        const resExactIdx = healthyReserves.findIndex(rp => rp.position === targetPos);
+        if (resExactIdx !== -1) {
+          candidate = healthyReserves.splice(resExactIdx, 1)[0];
+        } else {
+          const adaptable = ADAPTABLE_MAP[targetPos] || [];
+          const resAdaptIdx = healthyReserves.findIndex(rp => adaptable.includes(rp.position));
+          if (resAdaptIdx !== -1) {
+            candidate = healthyReserves.splice(resAdaptIdx, 1)[0];
+          }
+        }
       }
 
       if (candidate) {
@@ -336,6 +454,10 @@ export function autoReplaceIneligiblePlayers(
         candidate.squadStatus = 'STARTING';
         if (p) p.squadStatus = 'OUT_OF_SQUAD';
         replacedCount++;
+      } else {
+        // Leave vacant if no suitable candidate available
+        currentStarterIds[idx] = '';
+        vacantCount++;
       }
     }
   });
@@ -344,7 +466,7 @@ export function autoReplaceIneligiblePlayers(
   const cleanBench: string[] = [];
   currentBenchIds.forEach(pId => {
     const p = players[pId];
-    if (p && isHealthy(p)) {
+    if (p && isEligible(p)) {
       cleanBench.push(pId);
     } else {
       if (p) p.squadStatus = 'OUT_OF_SQUAD';
@@ -360,6 +482,229 @@ export function autoReplaceIneligiblePlayers(
   return {
     starters: currentStarterIds,
     bench: cleanBench.slice(0, 9),
-    replacedCount
+    replacedCount,
+    vacantCount
   };
 }
+
+export const PLAYER_ELIGIBILITY_CHECK = autoReplaceIneligiblePlayers;
+
+/**
+ * Requirement 1 & 2: 選手 → 選手の自由な手動入替処理
+ * 対象: スタメン、ベンチ、控え、全ポジション
+ * 負傷・出場停止・別クラブ・レンタル中選手は選択不可
+ */
+export function executePlayerReplacement(
+  tactics: TeamTactics,
+  players: Record<string, Player>,
+  userClubId: string,
+  oldPlayerId: string,
+  newPlayerId: string
+): { newTactics: TeamTactics; updatedPlayers: Record<string, Player>; success: boolean; message?: string } {
+  const oldPlayer = players[oldPlayerId];
+  const newPlayer = players[newPlayerId];
+  if (!oldPlayer || !newPlayer) {
+    return { newTactics: tactics, updatedPlayers: players, success: false, message: '選手が見つかりません。' };
+  }
+
+  // Eligibility check on new replacement player
+  if (newPlayer.clubId !== userClubId) {
+    return { newTactics: tactics, updatedPlayers: players, success: false, message: '他クラブ所属の選手は選択できません。' };
+  }
+  if (newPlayer.injury?.isInjured || newPlayer.injuryStatus === 'INJURED') {
+    return { newTactics: tactics, updatedPlayers: players, success: false, message: '負傷中の選手は選択できません。' };
+  }
+  if (newPlayer.suspension?.isSuspended || (newPlayer.suspension?.matchesRemaining || 0) > 0) {
+    return { newTactics: tactics, updatedPlayers: players, success: false, message: '出場停止中の選手は選択できません。' };
+  }
+  if (newPlayer.isLoaned && newPlayer.loanClubId !== userClubId) {
+    return { newTactics: tactics, updatedPlayers: players, success: false, message: '他クラブへレンタル中の選手は選択できません。' };
+  }
+
+  const updatedPlayers = { ...players };
+  const currentStarters = [...tactics.lineup.starters];
+  let currentBench = [...tactics.lineup.bench];
+  let currentReserves = [...(tactics.lineup.reserves || [])];
+
+  const oldStarterIdx = currentStarters.findIndex(s => s.playerId === oldPlayerId);
+  const oldBenchIdx = currentBench.indexOf(oldPlayerId);
+  const newBenchIdx = currentBench.indexOf(newPlayerId);
+  const newStarterIdx = currentStarters.findIndex(s => s.playerId === newPlayerId);
+
+  if (oldStarterIdx !== -1) {
+    // 1. Old player is in Starters
+    if (newStarterIdx !== -1) {
+      // Both are in starters: directly exchange their positions (e.g. ST: A, CF: B -> ST: B, CF: A)
+      currentStarters[oldStarterIdx] = {
+        ...currentStarters[oldStarterIdx],
+        playerId: newPlayerId
+      };
+      currentStarters[newStarterIdx] = {
+        ...currentStarters[newStarterIdx],
+        playerId: oldPlayerId
+      };
+    } else if (newBenchIdx !== -1) {
+      // New player was on bench: swap old player onto bench
+      currentStarters[oldStarterIdx] = {
+        ...currentStarters[oldStarterIdx],
+        playerId: newPlayerId
+      };
+      currentBench[newBenchIdx] = oldPlayerId;
+    } else {
+      // New player was in reserves
+      currentStarters[oldStarterIdx] = {
+        ...currentStarters[oldStarterIdx],
+        playerId: newPlayerId
+      };
+      currentBench = currentBench.filter(id => id !== newPlayerId);
+      currentReserves = currentReserves.filter(id => id !== newPlayerId);
+      if (currentBench.length < 9) {
+        currentBench.push(oldPlayerId);
+      } else {
+        if (!currentReserves.includes(oldPlayerId)) currentReserves.push(oldPlayerId);
+      }
+    }
+  } else if (oldBenchIdx !== -1) {
+    // 2. Old player is on Bench
+    if (newStarterIdx !== -1) {
+      // New player was starting: swap starter with old bench player
+      currentStarters[newStarterIdx] = {
+        ...currentStarters[newStarterIdx],
+        playerId: oldPlayerId
+      };
+      currentBench[oldBenchIdx] = newPlayerId;
+    } else if (newBenchIdx !== -1) {
+      // Both on bench: swap their positions
+      currentBench[oldBenchIdx] = newPlayerId;
+      currentBench[newBenchIdx] = oldPlayerId;
+    } else {
+      // New player was in reserves
+      currentBench[oldBenchIdx] = newPlayerId;
+      currentReserves = currentReserves.filter(id => id !== newPlayerId);
+      if (!currentReserves.includes(oldPlayerId)) currentReserves.push(oldPlayerId);
+    }
+  } else {
+    // 3. Old player is in Reserves
+    if (newStarterIdx !== -1) {
+      currentStarters[newStarterIdx] = {
+        ...currentStarters[newStarterIdx],
+        playerId: oldPlayerId
+      };
+      currentReserves = currentReserves.filter(id => id !== oldPlayerId);
+      if (!currentReserves.includes(newPlayerId)) currentReserves.push(newPlayerId);
+    } else if (newBenchIdx !== -1) {
+      currentBench[newBenchIdx] = oldPlayerId;
+      currentReserves = currentReserves.filter(id => id !== oldPlayerId);
+      if (!currentReserves.includes(newPlayerId)) currentReserves.push(newPlayerId);
+    }
+  }
+
+  // Strict de-duplication to prevent duplicate placement of any player (Requirement 2 & TEST 06)
+  const starterIdSet = new Set<string>();
+  const sanitizedStarters: typeof currentStarters = [];
+  currentStarters.forEach(s => {
+    if (!starterIdSet.has(s.playerId)) {
+      starterIdSet.add(s.playerId);
+      sanitizedStarters.push(s);
+    }
+  });
+
+  const sanitizedBench = currentBench.filter(id => !starterIdSet.has(id));
+  const uniqueBench = Array.from(new Set(sanitizedBench)).slice(0, 9);
+
+  // Update squad status metadata on player objects
+  const isNowStarter = sanitizedStarters.some(s => s.playerId === newPlayerId);
+  const isNowBench = uniqueBench.includes(newPlayerId);
+  updatedPlayers[newPlayerId] = {
+    ...newPlayer,
+    squadStatus: isNowStarter ? 'STARTING' : isNowBench ? 'BENCH' : 'OUT_OF_SQUAD'
+  };
+
+  const isOldStarter = sanitizedStarters.some(s => s.playerId === oldPlayerId);
+  const isOldBench = uniqueBench.includes(oldPlayerId);
+  updatedPlayers[oldPlayerId] = {
+    ...oldPlayer,
+    squadStatus: isOldStarter ? 'STARTING' : isOldBench ? 'BENCH' : 'OUT_OF_SQUAD'
+  };
+
+  const newTactics: TeamTactics = {
+    ...tactics,
+    lineup: {
+      starters: sanitizedStarters,
+      bench: uniqueBench,
+      reserves: currentReserves
+    }
+  };
+
+  return { newTactics, updatedPlayers, success: true };
+}
+
+// -------------------------------------------------------------
+// 【8. ユースアカデミー最低5名確保・ランダム生成・特級逸材】
+// -------------------------------------------------------------
+const YOUTH_FIRST_NAMES_JA = ['悠真', '蓮', '蒼', '陽翔', '湊', '大翔', '樹', '颯太', '陸', '陽向', '朝陽', '結翔', '瑛太', '律', '晴'];
+const YOUTH_LAST_NAMES_JA = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '渡辺', '山本', '中村', '小林', '加藤', '吉田', '山田', '松本', '井上', '木村'];
+const YOUTH_FIRST_NAMES_GLOBAL = ['Leo', 'Lucas', 'Oliver', 'Arthur', 'Mateo', 'Liam', 'Noah', 'Felix', 'Gabriel', 'Julian', 'Marco', 'Hugo'];
+const YOUTH_LAST_NAMES_GLOBAL = ['Silva', 'Santos', 'Müller', 'Schmidt', 'Dubois', 'Martin', 'Rossi', 'Ferrari', 'García', 'Fernández', 'Davies', 'Smith'];
+
+export function generateSingleYouthProspect(idSuffix?: string | number): YouthProspect {
+  const isJapanese = Math.random() < 0.5;
+  const firstName = isJapanese 
+    ? YOUTH_FIRST_NAMES_JA[Math.floor(Math.random() * YOUTH_FIRST_NAMES_JA.length)]
+    : YOUTH_FIRST_NAMES_GLOBAL[Math.floor(Math.random() * YOUTH_FIRST_NAMES_GLOBAL.length)];
+  const lastName = isJapanese
+    ? YOUTH_LAST_NAMES_JA[Math.floor(Math.random() * YOUTH_LAST_NAMES_JA.length)]
+    : YOUTH_LAST_NAMES_GLOBAL[Math.floor(Math.random() * YOUTH_LAST_NAMES_GLOBAL.length)];
+  const name = isJapanese ? `${lastName} ${firstName}` : `${firstName} ${lastName}`;
+  const nationality = isJapanese ? '日本' : ['イングランド', 'スペイン', 'フランス', 'ドイツ', 'ブラジル'][Math.floor(Math.random() * 5)];
+
+  const positions: Position[] = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST', 'CF'];
+  const position = positions[Math.floor(Math.random() * positions.length)];
+  const age = 15 + Math.floor(Math.random() * 4); // 15 - 18
+
+  // OVR: mostly developing (62-72), rare wonderkid (>= 80 ~ 4% chance) (Requirement 8)
+  const isSuperWonderkid = Math.random() < 0.04;
+  const ovr = isSuperWonderkid 
+    ? 80 + Math.floor(Math.random() * 3) 
+    : 62 + Math.floor(Math.random() * 11);
+  const potential = isSuperWonderkid ? Math.min(95, ovr + 10 + Math.floor(Math.random() * 5)) : Math.min(92, ovr + 12 + Math.floor(Math.random() * 12));
+
+  const playstyles: PlayStyle[] = [
+    'チャンスメイカー', '俊足ドリブラー', 'スピードスター', 'ゴールゲッター',
+    'ボックストゥボックス', 'アンカー', 'ボール運べるCB', 'ショットストッパー'
+  ];
+  const personalities: PlayerPersonality[] = [
+    'プロフェッショナル', '野心的', '冷静沈着', '努力家', 'リーダー気質'
+  ];
+
+  const scoutReport = isSuperWonderkid
+    ? `【世代屈指の特級逸材】若年ながら既に完成された卓越した技術とビジョンを兼ね備える。将来の世界的スター候補。`
+    : `基礎技術と成長意欲に優れた${position}の原石。出場機会と的確なトレーニングで大幅な成長が見込める。`;
+
+  return {
+    id: `youth_${Date.now()}_${idSuffix ?? Math.floor(Math.random() * 10000)}`,
+    name,
+    age,
+    nationality,
+    position,
+    ovr,
+    potential,
+    playstyle: playstyles[Math.floor(Math.random() * playstyles.length)],
+    personality: personalities[Math.floor(Math.random() * personalities.length)],
+    scoutReport,
+    promoted: false
+  };
+}
+
+export function ensureYouthAcademyProspects(currentAcademy?: YouthProspect[]): YouthProspect[] {
+  let list = Array.isArray(currentAcademy) ? [...currentAcademy] : [];
+  const activeCount = list.filter(p => !p.promoted).length;
+  if (activeCount < 5) {
+    const needed = 5 - activeCount;
+    for (let i = 0; i < needed; i++) {
+      list.push(generateSingleYouthProspect(i + 1));
+    }
+  }
+  return list;
+}
+

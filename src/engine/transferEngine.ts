@@ -212,6 +212,16 @@ export function handlePlayerNegotiationStep(
   isCompleted: boolean;
   isCollapsed: boolean;
 } {
+  // Requirement 4: Reject loan contract years > 1 year on engine data level
+  if (negotiation.isLoan && contractYears > 1) {
+    return {
+      updatedNegotiation: negotiation,
+      responseMessage: '期限付き移籍（レンタル）の期間は最長1シーズン（半年または1年）までに制限されています。2年以上の契約は選択できません。',
+      isCompleted: false,
+      isCollapsed: false
+    };
+  }
+
   const isRival = isRivalClub(player.clubId, buyerClub.id);
   const updated = {
     ...negotiation,
@@ -303,11 +313,16 @@ export function executeTransferCompletion(
   buyerClub.playerIds = newClubPlayerIds;
 
   // 3. Update player data
+  const finalContractYears = isLoan 
+    ? Math.min(1, negotiation.contractYearsOffered || 1) // Maximum 1 season loan limit (Requirement 3)
+    : negotiation.contractYearsOffered;
+  const loanDays = finalContractYears <= 0.5 ? 180 : 365;
+
   const updatedPlayer: Player = {
     ...player,
     clubId: buyerClub.id,
     wage: weeklyWage,
-    contractYears: negotiation.contractYearsOffered,
+    contractYears: finalContractYears,
     squadRole: negotiation.squadRoleOffered,
     managerTrust: 90,
     squadStatus: 'OUT_OF_SQUAD',
@@ -316,24 +331,162 @@ export function executeTransferCompletion(
     parentClubId: isLoan ? sellerClub.id : undefined,
     loanClubId: isLoan ? buyerClub.id : undefined,
     loanStartDate: isLoan ? state.currentDate : undefined,
-    loanEndDate: isLoan ? addDays(state.currentDate, 365) : undefined,
+    loanEndDate: isLoan ? addDays(state.currentDate, loanDays) : undefined,
     loanType: negotiation.negotiationType,
     buyOptionFee: negotiation.buyOptionFee,
     loanOptionBuyFee: negotiation.buyOptionFee,
     developmentLoan: negotiation.negotiationType === 'dev_loan'
   };
 
-  // 4. Update user tactics lineup if user's club is involved
+  // 4. Update user tactics lineup if user's club is involved (Requirements 3 & 4)
   let updatedTactics = { ...state.tactics };
+  let autoReplacementNews: NewsItem | null = null;
+  let autoChangeNotice: {
+    transferredPlayerName: string;
+    replacedPlayerName: string | null;
+    position: string;
+    date: string;
+  } | undefined = undefined;
+
   if (state.userClubId === buyerClub.id) {
     if (!updatedTactics.lineup.reserves.includes(player.id)) {
       updatedTactics.lineup.reserves.push(player.id);
     }
   }
+
   if (state.userClubId === sellerClub.id) {
-    updatedTactics.lineup.starters = updatedTactics.lineup.starters.filter(s => s.playerId !== player.id);
-    updatedTactics.lineup.bench = updatedTactics.lineup.bench.filter(id => id !== player.id);
-    updatedTactics.lineup.reserves = updatedTactics.lineup.reserves.filter(id => id !== player.id);
+    const starterSlotIndex = updatedTactics.lineup.starters.findIndex(s => s.playerId === player.id);
+
+    if (starterSlotIndex !== -1) {
+      const slotPos = updatedTactics.lineup.starters[starterSlotIndex].position;
+
+      // Adaptable position mapping for realistic replacement
+      const ADAPTABLE_MAP: Record<string, string[]> = {
+        ST: ['CF', 'RW', 'LW', 'CAM'],
+        CF: ['ST', 'CAM', 'RW', 'LW'],
+        LW: ['LM', 'RW', 'ST', 'CAM'],
+        RW: ['RM', 'LW', 'ST', 'CAM'],
+        CAM: ['CM', 'CF', 'LW', 'RW'],
+        CM: ['CDM', 'CAM', 'RM', 'LM'],
+        CDM: ['CM', 'CB'],
+        LM: ['LW', 'LWB', 'CM', 'RM'],
+        RM: ['RW', 'RWB', 'CM', 'LM'],
+        LB: ['LWB', 'CB', 'RB'],
+        RB: ['RWB', 'CB', 'LB'],
+        LWB: ['LB', 'LM'],
+        RWB: ['RB', 'RM'],
+        CB: ['CDM', 'LB', 'RB'],
+        GK: ['GK']
+      };
+
+      const isEligible = (p: Player | undefined): p is Player => {
+        if (!p) return false;
+        if (p.id === player.id) return false;
+        if (p.clubId !== sellerClub.id) return false;
+        if (p.injury?.isInjured || p.injuryStatus === 'INJURED') return false;
+        if (p.suspension?.isSuspended) return false;
+        return true;
+      };
+
+      // Priority 1: Bench player of the exact same position
+      const benchPlayers = updatedTactics.lineup.bench
+        .map(id => state.players[id])
+        .filter(isEligible);
+
+      let candidate = benchPlayers
+        .filter(p => p.position === slotPos)
+        .sort((a, b) => b.ovr - a.ovr)[0];
+
+      // Priority 2: Bench player with adaptable position
+      if (!candidate) {
+        const adaptablePositions = ADAPTABLE_MAP[slotPos] || [];
+        candidate = benchPlayers
+          .filter(p => adaptablePositions.includes(p.position))
+          .sort((a, b) => b.ovr - a.ovr)[0];
+      }
+
+      // Priority 3: Best suited player from remaining squad (reserves)
+      if (!candidate) {
+        const reservePlayers = (sellerClub.playerIds || [])
+          .filter(id => id !== player.id && !updatedTactics.lineup.starters.some(s => s.playerId === id) && !updatedTactics.lineup.bench.includes(id))
+          .map(id => state.players[id])
+          .filter(isEligible);
+
+        candidate = reservePlayers
+          .filter(p => p.position === slotPos)
+          .sort((a, b) => b.ovr - a.ovr)[0];
+
+        if (!candidate) {
+          const adaptablePositions = ADAPTABLE_MAP[slotPos] || [];
+          candidate = reservePlayers
+            .filter(p => adaptablePositions.includes(p.position))
+            .sort((a, b) => b.ovr - a.ovr)[0];
+        }
+      }
+
+      if (candidate) {
+        // Automatically promote candidate into starter slot
+        updatedTactics.lineup.starters[starterSlotIndex] = {
+          ...updatedTactics.lineup.starters[starterSlotIndex],
+          playerId: candidate.id
+        };
+
+        // Remove from bench or reserves (leaving bench spot vacant)
+        updatedTactics.lineup.bench = updatedTactics.lineup.bench.filter(id => id !== candidate.id);
+        updatedTactics.lineup.reserves = updatedTactics.lineup.reserves.filter(id => id !== candidate.id && id !== player.id);
+
+        if (state.players[candidate.id]) {
+          state.players[candidate.id].squadStatus = 'STARTING';
+        }
+
+        autoReplacementNews = {
+          id: `news_squad_auto_${Date.now()}_${candidate.id}`,
+          date: state.currentDate,
+          headline: `【スタメン変更】${player.name}が移籍したため、${candidate.name}がスタメンに変更されました`,
+          body: `スタメン主力である${player.name}の移籍に伴い、ベンチの${candidate.name}が${slotPos}のスタメンへ自動昇格しました。チーム編成画面で最新の布陣をご確認ください。`,
+          category: 'transfer',
+          relatedClubId: sellerClub.id,
+          relatedPlayerId: candidate.id,
+          importance: 'high'
+        };
+
+        autoChangeNotice = {
+          transferredPlayerName: player.name,
+          replacedPlayerName: candidate.name,
+          position: slotPos,
+          date: state.currentDate
+        };
+      } else {
+        // No suitable candidate: leave starter slot vacant
+        updatedTactics.lineup.starters[starterSlotIndex] = {
+          ...updatedTactics.lineup.starters[starterSlotIndex],
+          playerId: ''
+        };
+
+        updatedTactics.lineup.bench = updatedTactics.lineup.bench.filter(id => id !== player.id);
+        updatedTactics.lineup.reserves = updatedTactics.lineup.reserves.filter(id => id !== player.id);
+
+        autoReplacementNews = {
+          id: `news_squad_vacant_${Date.now()}_${player.id}`,
+          date: state.currentDate,
+          headline: `【スタメン空席警告】${player.name}の移籍に伴い、スタメンに空きがあります`,
+          body: `${player.name}が他クラブへ移籍しましたが、適任の控え選手が不在のためスタメン（${slotPos}）に空き枠が生じています。チーム編成画面で後任選手を直接配置してください。`,
+          category: 'transfer',
+          relatedClubId: sellerClub.id,
+          importance: 'high'
+        };
+
+        autoChangeNotice = {
+          transferredPlayerName: player.name,
+          replacedPlayerName: null,
+          position: slotPos,
+          date: state.currentDate
+        };
+      }
+    } else {
+      updatedTactics.lineup.bench = updatedTactics.lineup.bench.filter(id => id !== player.id);
+      updatedTactics.lineup.reserves = updatedTactics.lineup.reserves.filter(id => id !== player.id);
+    }
   }
 
   // 5. Add to transfer history
@@ -381,9 +534,15 @@ export function executeTransferCompletion(
     importance: 'high'
   };
 
+  const additionalNews: NewsItem[] = [transferNews];
+  if (autoReplacementNews) {
+    additionalNews.unshift(autoReplacementNews);
+  }
+
   return {
     ...state,
     tactics: updatedTactics,
+    lastSquadAutoChangeNotice: autoChangeNotice !== undefined ? autoChangeNotice : state.lastSquadAutoChangeNotice,
     clubs: {
       ...state.clubs,
       [buyerClub.id]: buyerClub,
@@ -393,7 +552,7 @@ export function executeTransferCompletion(
       ...state.players,
       [player.id]: updatedPlayer
     },
-    news: [transferNews, ...state.news],
+    news: [...additionalNews, ...state.news],
     transferHistory: historyList
   };
 }

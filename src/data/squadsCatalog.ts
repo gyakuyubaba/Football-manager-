@@ -227,4 +227,39 @@ export const CURATED_REAL_SQUADS: Record<string, Player[]> = {
     makeRealPlayer('psg_lee', '李 康仁 (Lee Kang-in)', 'psg', 'CAM', 24, '韓国', 81, 86, 35000000, 110000, 19, '左', 'チャンスメイカー', ['RW'])
   ],
 
-  };
+  bournemouth: [
+    makeRealPlayer('bou_kepa', 'Kepa Arrizabalaga', 'bournemouth', 'GK', 30, 'スペイン', 80, 81, 18000000, 70000, 13, '右', 'ショットストッパー'),
+    makeRealPlayer('bou_zabarnyi', 'Illia Zabarnyi', 'bournemouth', 'CB', 23, 'ウクライナ', 80, 86, 38000000, 65000, 27, '右', 'ボール運べるCB'),
+    makeRealPlayer('bou_senesi', 'Marcos Senesi', 'bournemouth', 'CB', 28, 'アルゼンチン', 79, 80, 24000000, 60000, 25, '左', 'ボール運べるCB'),
+    makeRealPlayer('bou_smith', 'Adam Smith', 'bournemouth', 'RB', 34, 'イングランド', 76, 76, 4000000, 45000, 15, '右', '守備的SB'),
+    makeRealPlayer('bou_kerkez', 'Milos Kerkez', 'bournemouth', 'LB', 21, 'ハンガリー', 79, 86, 32000000, 50000, 3, '左', '攻撃的SB'),
+    makeRealPlayer('bou_cook', 'Lewis Cook', 'bournemouth', 'CDM', 28, 'イングランド', 79, 80, 22000000, 60000, 4, '右', 'アンカー'),
+    makeRealPlayer('bou_christie', 'Ryan Christie', 'bournemouth', 'CM', 30, 'スコットランド', 78, 78, 16000000, 55000, 10, '左', 'ボックストゥボックス'),
+    makeRealPlayer('bou_kluivert', 'Justin Kluivert', 'bournemouth', 'CAM', 26, 'オランダ', 79, 82, 26000000, 65000, 19, '右', 'チャンスメイカー', ['LW', 'RW']),
+    makeRealPlayer('bou_semenyo', 'Antoine Semenyo', 'bournemouth', 'RW', 25, 'ガーナ', 81, 86, 45000000, 75000, 24, '右', '俊足ドリブラー', ['ST', 'LW']),
+    makeRealPlayer('bou_tavernier', 'Marcus Tavernier', 'bournemouth', 'LW', 26, 'イングランド', 78, 80, 20000000, 55000, 16, '左', 'チャンスメイカー'),
+    makeRealPlayer('bou_evanilson', 'Evanilson', 'bournemouth', 'ST', 25, 'ブラジル', 80, 85, 42000000, 80000, 9, '右', 'ゴールゲッター'),
+    makeRealPlayer('bou_ouattara', 'Dango Ouattara', 'bournemouth', 'LW', 23, 'ブルキナファソ', 77, 82, 18000000, 40000, 11, '左', 'スピードスター'),
+    makeRealPlayer('bou_unai', 'Enes Ünal', 'bournemouth', 'ST', 28, 'トルコ', 78, 79, 18000000, 55000, 26, '右', 'ターゲットマン'),
+    makeRealPlayer('bou_huijsen', 'Dean Huijsen', 'bournemouth', 'CB', 20, 'スペイン', 77, 87, 25000000, 40000, 2, '右', 'ボール運べるCB'),
+    makeRealPlayer('bou_aarons', 'Max Aarons', 'bournemouth', 'RB', 25, 'イングランド', 76, 78, 14000000, 45000, 37, '右', '攻撃的SB')
+  ],
+
+  lyon: [
+    makeRealPlayer('lyo_perri', 'Lucas Perri', 'lyon', 'GK', 27, 'ブラジル', 80, 83, 22000000, 60000, 23, '右', 'ショットストッパー'),
+    makeRealPlayer('lyo_niakhate', 'Moussa Niakhaté', 'lyon', 'CB', 29, 'セネガル', 79, 80, 22000000, 65000, 19, '左', 'ボール運べるCB'),
+    makeRealPlayer('lyo_caleta', 'Duje Ćaleta-Car', 'lyon', 'CB', 28, 'クロアチア', 78, 79, 16000000, 55000, 55, '右', 'ボール運べるCB'),
+    makeRealPlayer('lyo_mata', 'Clinton Mata', 'lyon', 'RB', 32, 'アンゴラ', 78, 78, 10000000, 50000, 22, '右', '守備的SB'),
+    makeRealPlayer('lyo_tagliafico', 'Nicolás Tagliafico', 'lyon', 'LB', 32, 'アルゼンチン', 80, 80, 14000000, 65000, 3, '左', '守備的SB'),
+    makeRealPlayer('lyo_matic', 'Nemanja Matić', 'lyon', 'CDM', 36, 'セルビア', 79, 79, 8000000, 75000, 31, '左', 'アンカー'),
+    makeRealPlayer('lyo_caqueret', 'Maxence Caqueret', 'lyon', 'CM', 25, 'フランス', 80, 84, 30000000, 70000, 6, '右', 'ボックストゥボックス'),
+    makeRealPlayer('lyo_tolisso', 'Corentin Tolisso', 'lyon', 'CM', 31, 'フランス', 80, 80, 20000000, 80000, 8, '右', 'ボックストゥボックス'),
+    makeRealPlayer('lyo_cherki', 'Rayan Cherki', 'lyon', 'CAM', 22, 'フランス', 81, 87, 42000000, 70000, 18, '両足', 'チャンスメイカー', ['RW', 'LW']),
+    makeRealPlayer('lyo_fofana', 'Malick Fofana', 'lyon', 'LW', 20, 'ベルギー', 79, 87, 32000000, 45000, 11, '右', '俊足ドリブラー'),
+    makeRealPlayer('lyo_lacazette', 'Alexandre Lacazette', 'lyon', 'ST', 34, 'フランス', 82, 82, 18000000, 120000, 10, '右', 'ゴールゲッター'),
+    makeRealPlayer('lyo_mikautadze', 'Georges Mikautadze', 'lyon', 'ST', 24, 'ジョージア', 80, 86, 35000000, 65000, 69, '右', 'ゴールゲッター'),
+    makeRealPlayer('lyo_nuamah', 'Ernest Nuamah', 'lyon', 'RW', 21, 'ガーナ', 78, 85, 24000000, 45000, 37, '左', 'スピードスター'),
+    makeRealPlayer('lyo_veretout', 'Jordan Veretout', 'lyon', 'CM', 32, 'フランス', 79, 79, 14000000, 60000, 7, '右', 'ボックストゥボックス'),
+    makeRealPlayer('lyo_abner', 'Abner Vinícius', 'lyon', 'LB', 25, 'ブラジル', 77, 81, 15000000, 40000, 16, '左', '攻撃的SB')
+  ]
+};

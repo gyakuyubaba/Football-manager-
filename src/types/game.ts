@@ -116,6 +116,9 @@ export interface Player {
   altPositions: Position[];
   preferredFoot: '右' | '左' | '両足';
   ovr: number;
+  exactOvr?: number; // Continuous fractional OVR (e.g. 78.2) for long-term growth
+  ovrGrowthProgress?: number;
+  matchRatingsHistory?: number[];
   potential: number;
   
   // Specific Attributes (1-99)
@@ -234,6 +237,8 @@ export type FormationName =
   | '4-4-1-1'
   | '4-1-4-1'
   | '4-1-2-3'
+  | '4-1-3-2'
+  | '4-5-1'
   | '4-3-1-2'
   | '4-3-2-1'
   | '4-2-4'
@@ -247,7 +252,41 @@ export type FormationName =
   | '5-3-2'
   | '5-4-1'
   | '5-2-3'
-  | '5-3-1-1';
+  | '5-2-2-1'
+  | '5-3-1-1'
+  | '非対称4-3-3'
+  | '非対称4-2-3-1'
+  | '偽SB型4-3-3'
+  | '攻撃時3バック化'
+  | '守備時5バック化'
+  | 'ダイヤモンド型4-4-2'
+  | 'フラット型4-5-1'
+  | '2トップ＋トップ下型'
+  | '中央密集型'
+  | '両ウイング高位置型'
+  | '片側ウイング偏重型';
+
+export interface PeriodSummary {
+  startDate: string;
+  endDate: string;
+  matchesPlayed: number;
+  userMatchesCount: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  cleanSheets: number;
+  injuriesOccurred: number;
+  matchDetails: {
+    matchId: string;
+    date: string;
+    opponentName: string;
+    isHome: boolean;
+    score: string;
+    result: 'W' | 'D' | 'L';
+  }[];
+}
 
 export interface TeamTactics {
   formation: FormationName;
@@ -300,10 +339,13 @@ export interface MatchStats {
 }
 
 export interface MatchFixture {
-  id: string;
+  id: string; // matchId
   date: string;
-  competition: LeagueKey | CupKey | 'pre-season';
+  competition: LeagueKey | CupKey | 'pre-season'; // competitionId
   competitionName: string;
+  seasonId?: string;
+  round?: string; // e.g. Round of 32, Round of 16, Quarter-Final, Semi-Final, Final
+  matchSeed?: number; // Deterministic simulation seed
   homeClubId: string;
   awayClubId: string;
   status: 'upcoming' | 'playing' | 'halftime' | 'finished';
@@ -434,6 +476,24 @@ export interface CareerSummary {
   historyLog: string[];
 }
 
+export interface DifficultySettings {
+  transferDifficulty: 'easy' | 'normal' | 'realistic'; // 簡単 / 普通 / 現実的
+  injuryFrequency: 'low' | 'normal' | 'high'; // 少ない / 普通 / 多い
+  playerGrowthRate: 'slow' | 'normal' | 'fast'; // 遅い / 普通 / 速い
+  aiTransferActivity: 'low' | 'normal' | 'high'; // 少ない / 普通 / 活発
+  matchGoalRate: 'low' | 'normal' | 'high'; // 少ない / 普通 / 多い
+  managerJobDifficulty: 'lenient' | 'normal' | 'strict'; // 寛容 / 普通 / 厳格
+}
+
+export const DEFAULT_DIFFICULTY_SETTINGS: DifficultySettings = {
+  transferDifficulty: 'normal',
+  injuryFrequency: 'normal',
+  playerGrowthRate: 'normal',
+  aiTransferActivity: 'normal',
+  matchGoalRate: 'normal',
+  managerJobDifficulty: 'normal'
+};
+
 export interface PreSeasonTournament {
   id: string;
   name: string;
@@ -455,6 +515,7 @@ export interface GameWorldState {
   fanApproval: number; // 0 - 100
   consecutiveLosses: number;
   isSacked: boolean;
+  difficultySettings: DifficultySettings;
 
   clubs: Record<string, Club>;
   players: Record<string, Player>;
@@ -472,4 +533,10 @@ export interface GameWorldState {
   transferHistory?: CompletedTransferRecord[];
   showDeadlineSummary?: boolean;
   year2UCLQualifiedClubIds?: string[];
+  lastSquadAutoChangeNotice?: {
+    transferredPlayerName: string;
+    replacedPlayerName: string | null;
+    position: string;
+    date: string;
+  };
 }

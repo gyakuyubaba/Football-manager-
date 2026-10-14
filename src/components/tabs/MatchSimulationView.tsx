@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MatchFixture, GameWorldState, TeamTactics, MatchEvent, Player } from '../../types/game';
-import { simulateFullMatch, generateAssistantCoachAdvice, finalMatchEligibilityCheck, MatchEligibilityCheckResult } from '../../engine/matchEngine';
+import { simulateFullMatch, generateAssistantCoachAdvice, finalMatchEligibilityCheck, MatchEligibilityCheckResult, fastForwardRemainingMatch } from '../../engine/matchEngine';
 import { autoReplaceIneligiblePlayers } from '../../engine/dataValidator';
 import { getDefaultTacticsForClub } from '../../data/squadPopulator';
 import { FatigueGauge, ConditionDot } from '../common/FatigueGauge';
+import { PlayerReplacementModal } from '../PlayerReplacementModal';
 import { useI18n } from '../../i18n/LanguageContext';
 import { 
   Play, 
@@ -20,12 +21,14 @@ import {
   Clock,
   Flame,
   AlertCircle,
-  AlertTriangle
+  AlertTriangle,
+  ArrowLeftRight
 } from 'lucide-react';
 
 interface Props {
   fixture: MatchFixture;
   state: GameWorldState;
+  onUpdateTactics?: (tactics: TeamTactics) => void;
   onFinishMatch: (updatedFixture: MatchFixture, updatedPlayers: Record<string, Player>) => void;
   onOpenPressConference: (fixture: MatchFixture) => void;
   onClose: () => void;
@@ -34,6 +37,7 @@ interface Props {
 export const MatchSimulationView: React.FC<Props> = ({ 
   fixture, 
   state, 
+  onUpdateTactics,
   onFinishMatch, 
   onOpenPressConference,
   onClose 
@@ -43,6 +47,9 @@ export const MatchSimulationView: React.FC<Props> = ({
   const homeClub = state.clubs[fixture.homeClubId];
   const awayClub = state.clubs[fixture.awayClubId];
   const isUserHome = fixture.homeClubId === state.userClubId;
+
+  // Manual player replacement modal target (Requirement 1, 2, 3)
+  const [manualReplaceTarget, setManualReplaceTarget] = useState<Player | null>(null);
 
   // Match progression states
   const [matchPhase, setMatchPhase] = useState<'pre' | 'first_half' | 'halftime' | 'second_half' | 'finished'>('pre');
@@ -275,12 +282,29 @@ export const MatchSimulationView: React.FC<Props> = ({
     setIsPlaying(true);
   };
 
-  // Skip simulation to end of current half or full time
+  // Skip simulation to end of current half or full time (Requirement 7: 完全同期)
   const handleInstantSkip = () => {
-    if (!simulatedResult) return;
+    if (!homeClub || !awayClub) return;
+
+    const homeTac = isUserHome ? tactics : getDefaultTacticsForClub(homeClub, state.players);
+    const awayTac = !isUserHome ? tactics : getDefaultTacticsForClub(awayClub, state.players);
+
     if (minute < 45) {
-      // Fast forward to half time
-      const firstHalfEvents = simulatedResult.fixture.events.filter((e: MatchEvent) => e.minute <= 45);
+      // Fast forward to half time without losing current events
+      const res = fastForwardRemainingMatch(
+        minute,
+        revealedEvents,
+        currentScore,
+        fixture,
+        homeClub,
+        awayClub,
+        homeTac,
+        awayTac,
+        state.players,
+        simulatedResult
+      );
+
+      const firstHalfEvents = (res.fixture.events || []).filter((e: MatchEvent) => e.minute <= 45);
       setRevealedEvents(firstHalfEvents);
       let hScore = 0;
       let aScore = 0;
@@ -296,14 +320,26 @@ export const MatchSimulationView: React.FC<Props> = ({
       setMatchPhase('halftime');
       setShowHalftimeModal(true);
     } else {
-      // Fast forward to full time
-      const allEvents = simulatedResult.fixture.events;
-      setRevealedEvents(allEvents);
-      setCurrentScore([simulatedResult.fixture.homeScore ?? 0, simulatedResult.fixture.awayScore ?? 0]);
+      // Fast forward to full time: preserves first half score and events strictly
+      const res = fastForwardRemainingMatch(
+        minute,
+        revealedEvents,
+        currentScore,
+        fixture,
+        homeClub,
+        awayClub,
+        homeTac,
+        awayTac,
+        state.players,
+        simulatedResult
+      );
+
+      setRevealedEvents(res.fixture.events || []);
+      setCurrentScore([res.fixture.homeScore ?? 0, res.fixture.awayScore ?? 0]);
       setMinute(90);
       setIsPlaying(false);
       setMatchPhase('finished');
-      onFinishMatch(simulatedResult.fixture, simulatedResult.updatedPlayers);
+      onFinishMatch(res.fixture, res.updatedPlayers);
     }
   };
 
@@ -616,17 +652,30 @@ export const MatchSimulationView: React.FC<Props> = ({
                     <AlertCircle className="w-5 h-5 shrink-0" />
                     <span>出場できない選手が含まれています</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleAutoReplaceIneligible}
-                    className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-400 active:scale-[0.98] text-slate-950 text-xs font-black shadow-md shadow-red-500/30 cursor-pointer shrink-0 transition-transform flex items-center justify-center gap-1.5"
-                  >
-                    <span>選手を入れ替える（自動最適化）</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const firstIneligible = eligibilityResult.ineligibleStarters[0]?.player || eligibilityResult.ineligibleBench[0]?.player;
+                        if (firstIneligible) setManualReplaceTarget(firstIneligible);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-slate-950 text-xs font-black shadow-md shadow-amber-500/30 cursor-pointer shrink-0 transition-transform flex items-center justify-center gap-1.5"
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5" />
+                      <span>選手を変更</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAutoReplaceIneligible}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 cursor-pointer shrink-0 transition-colors"
+                    >
+                      <span>自動最適化</span>
+                    </button>
+                  </div>
                 </div>
                 
                 <p className="text-xs text-red-300">
-                  ※負傷中・出場停止処分中・ベンチ外の選手は試合への出場・ベンチ入りが禁止されています。該当選手を外してください。
+                  ※負傷中・出場停止処分中の選手は試合への出場・ベンチ入りが禁止されています。「選手を変更」から交代選手を直接選択してください。
                 </p>
 
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
@@ -638,8 +687,16 @@ export const MatchSimulationView: React.FC<Props> = ({
                         </span>
                         <span className="font-bold text-white">{item.player.name}</span>
                         <span className="text-slate-400 text-[11px]">({item.role === 'STARTER' ? 'スタメン' : 'ベンチ'})</span>
+                        <span className="text-red-300 text-[11px] font-medium ml-2">{item.reason}</span>
                       </div>
-                      <span className="text-red-300 text-[11px] font-medium">{item.reason}</span>
+                      <button
+                        type="button"
+                        onClick={() => setManualReplaceTarget(item.player)}
+                        className="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold border border-amber-500/40 cursor-pointer transition-colors flex items-center gap-1"
+                      >
+                        <ArrowLeftRight className="w-3 h-3" />
+                        <span>選手を変更</span>
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1245,6 +1302,40 @@ export const MatchSimulationView: React.FC<Props> = ({
               </div>
             </div>
           </div>
+        )}
+
+        {/* MANUAL PRE-MATCH PLAYER REPLACEMENT MODAL (Requirement 1, 2, 3) */}
+        {manualReplaceTarget && (
+          <PlayerReplacementModal
+            isOpen={true}
+            oldPlayer={manualReplaceTarget}
+            state={state}
+            tactics={tactics}
+            onCompleteReplacement={(newTactics, updatedPlayers, msg) => {
+              setTactics(newTactics);
+              if (onUpdateTactics) onUpdateTactics(newTactics);
+              
+              // Re-check eligibility
+              const newCheck = finalMatchEligibilityCheck(
+                newTactics.lineup.starters.map(s => s.playerId),
+                newTactics.lineup.bench,
+                state.userClubId || '',
+                updatedPlayers,
+                state.currentDate
+              );
+              setEligibilityResult(newCheck.isEligible ? null : newCheck);
+              setManualReplaceTarget(null);
+
+              // Re-initialize simulatedResult with new valid lineup
+              if (homeClub && awayClub) {
+                const homeTac = isUserHome ? newTactics : getDefaultTacticsForClub(homeClub, updatedPlayers);
+                const awayTac = !isUserHome ? newTactics : getDefaultTacticsForClub(awayClub, updatedPlayers);
+                const newRes = simulateFullMatch(fixture, homeClub, awayClub, homeTac, awayTac, updatedPlayers);
+                setSimulatedResult(newRes);
+              }
+            }}
+            onClose={() => setManualReplaceTarget(null)}
+          />
         )}
 
       </div>

@@ -17,7 +17,7 @@ import {
   clearGameState,
   resetGameWorldToInitial
 } from './engine/gameState';
-import { advanceOneDay, fastForwardUntil } from './engine/dateEngine';
+import { advanceOneDay, fastForwardUntil, applyMatchResultToWorld, simulatePendingAIFixturesForDate } from './engine/dateEngine';
 import { exerciseLoanBuyOption } from './engine/transferEngine';
 import { HeaderNav } from './components/HeaderNav';
 import { BottomTabBar, MainTab } from './components/BottomTabBar';
@@ -205,14 +205,18 @@ export default function App() {
       }
     });
 
+    // Requirement 1 & 10: Unified MATCH_RESULT processing for ALL clubs
+    const stateWithMatchResult = applyMatchResultToWorld(gameState, updatedFixture, updatedPlayers);
+
+    // Simulate all other scheduled league matches for this round so ALL clubs update played and standings simultaneously
+    const stateWithAllMatches = simulatePendingAIFixturesForDate(stateWithMatchResult, updatedFixture.date);
+
     const nextState: GameWorldState = {
-      ...gameState,
-      fixtures: updatedFixtures,
-      players: updatedPlayers,
+      ...stateWithAllMatches,
       manager: updatedManager,
       consecutiveLosses,
       boardConfidence,
-      news: injuryNewsItems.length > 0 ? [...injuryNewsItems, ...gameState.news] : gameState.news
+      news: injuryNewsItems.length > 0 ? [...injuryNewsItems, ...stateWithAllMatches.news] : stateWithAllMatches.news
     };
 
     setGameState(nextState);
@@ -458,6 +462,7 @@ export default function App() {
         <MatchSimulationView
           fixture={activeMatchFixture}
           state={gameState}
+          onUpdateTactics={handleUpdateTactics}
           onFinishMatch={handleFinishMatch}
           onOpenPressConference={(f) => {
             setActivePressFixture(f);

@@ -6,14 +6,17 @@ import {
   StandingsRow, 
   MatchFixture, 
   TeamTactics, 
-  NewsItem 
+  NewsItem,
+  DifficultySettings,
+  DEFAULT_DIFFICULTY_SETTINGS
 } from '../types/game';
-import { ALL_CLUBS } from '../data/clubsData';
+import { ALL_CLUBS, ENABLE_J_LEAGUE } from '../data/clubsData';
 import { INITIAL_YOUTH_ACADEMY } from '../data/initialData';
 import { buildCompletePlayersRegistry, populateClubsWithDefaultSquads, getDefaultTacticsForClub } from '../data/squadPopulator';
 import { getDaysUntilDeadline } from './dateEngine';
+import { ensureYouthAcademyProspects } from './dataValidator';
 
-export const SAVE_KEY = 'fm26_career_save_v4_unified';
+export const SAVE_KEY = 'fm26_career_save_v5_pure_europe';
 
 export function createInitialStandings(clubs: Record<string, Club>): Record<LeagueKey, StandingsRow[]> {
   const standings: Record<LeagueKey, StandingsRow[]> = {
@@ -22,9 +25,11 @@ export function createInitialStandings(clubs: Record<string, Club>): Record<Leag
     'bundesliga': [],
     'serie-a': [],
     'ligue-1': [],
-    'j1-league': [],
-    'j2-league': [],
-    'j3-league': []
+    ...(ENABLE_J_LEAGUE ? {
+      'j1-league': [],
+      'j2-league': [],
+      'j3-league': []
+    } : {} as any)
   };
 
   Object.values(clubs).forEach(club => {
@@ -78,7 +83,7 @@ export function generateSeasonFixtures(clubs: Record<string, Club>, userClubId: 
       date: '2026-07-20',
       competition: 'pre-season',
       competitionName: 'プレシーズン・親善マッチ第2戦',
-      homeClubId: opponents[1]?.id || 'sanfrecce',
+      homeClubId: opponents[1]?.id || 'leverkusen',
       awayClubId: userClubId,
       status: 'upcoming',
       isUserMatch: true
@@ -149,7 +154,7 @@ export function generateSeasonFixtures(clubs: Record<string, Club>, userClubId: 
   return fixtures;
 }
 
-export function createNewGameWorld(manager: ManagerProfile): GameWorldState {
+export function createNewGameWorld(manager: ManagerProfile, difficultySettings?: DifficultySettings): GameWorldState {
   const initialClubsMap: Record<string, Club> = {};
   ALL_CLUBS.forEach(c => {
     initialClubsMap[c.id] = { ...c, playerIds: [] };
@@ -196,6 +201,7 @@ export function createNewGameWorld(manager: ManagerProfile): GameWorldState {
     fanApproval: 75,
     consecutiveLosses: 0,
     isSacked: false,
+    difficultySettings: difficultySettings || { ...DEFAULT_DIFFICULTY_SETTINGS },
     clubs,
     players,
     tactics: initialTactics,
@@ -203,7 +209,7 @@ export function createNewGameWorld(manager: ManagerProfile): GameWorldState {
     standings,
     negotiations: {},
     news: [welcomeNews],
-    youthAcademy: [...INITIAL_YOUTH_ACADEMY],
+    youthAcademy: ensureYouthAcademyProspects(INITIAL_YOUTH_ACADEMY),
     careerHistory: [],
     trainingFocus: 'バランス総合'
   };
@@ -503,6 +509,12 @@ export function loadGameState(): GameWorldState | null {
       console.warn('Legacy save detected. Resetting to 2026/27 European 96 clubs real database.');
       window.localStorage.removeItem(SAVE_KEY);
       return null;
+    }
+    if (!state.difficultySettings) {
+      state.difficultySettings = { ...DEFAULT_DIFFICULTY_SETTINGS };
+    }
+    if (!state.youthAcademy || state.youthAcademy.length < 5) {
+      state.youthAcademy = ensureYouthAcademyProspects(state.youthAcademy);
     }
     return state;
   } catch (err) {

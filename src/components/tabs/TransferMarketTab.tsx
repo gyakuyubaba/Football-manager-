@@ -1000,18 +1000,31 @@ export const TransferMarketTab: React.FC<Props> = ({ state, onUpdateState, onSel
                   </div>
 
                   <div>
-                    <label className="text-xs text-slate-400 block mb-1">契約期間</label>
-                    <select
-                      value={contractYears}
-                      onChange={e => setContractYears(Number(e.target.value))}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-                    >
-                      <option value={1}>1年間</option>
-                      <option value={2}>2年間</option>
-                      <option value={3}>3年間 (標準)</option>
-                      <option value={4}>4年間</option>
-                      <option value={5}>5年間 (長期大型契約)</option>
-                    </select>
+                    <label className="text-xs text-slate-400 block mb-1">
+                      {activeNegotiation.isLoan ? 'レンタル期間 (最大1シーズン制限)' : '契約期間'}
+                    </label>
+                    {activeNegotiation.isLoan ? (
+                      <select
+                        value={contractYears}
+                        onChange={e => setContractYears(Number(e.target.value))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                      >
+                        <option value={0.5}>半年間 (6ヶ月)</option>
+                        <option value={1}>1年間 (1シーズン)</option>
+                      </select>
+                    ) : (
+                      <select
+                        value={contractYears}
+                        onChange={e => setContractYears(Number(e.target.value))}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                      >
+                        <option value={1}>1年間</option>
+                        <option value={2}>2年間</option>
+                        <option value={3}>3年間 (標準)</option>
+                        <option value={4}>4年間</option>
+                        <option value={5}>5年間 (長期大型契約)</option>
+                      </select>
+                    )}
                   </div>
 
                   <div>
