@@ -116,8 +116,8 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
     }
 
     let finalName = p.name;
-    const norm = finalName.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (registeredNormalizedNames.has(norm)) {
+    const norm = finalName.trim().toLowerCase().replace(/[\s\-_・·\.\,\'\"\(\)]/g, '') || finalName.trim().toLowerCase();
+    if (norm && registeredNormalizedNames.has(norm)) {
       if (p.id.startsWith('p_')) {
         finalName = `${p.name} Jr.`;
       } else {
@@ -143,7 +143,9 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
 
     registry[finalId] = cleanPlayer;
     registeredPlayerIds.add(finalId);
-    registeredNormalizedNames.add(cleanPlayer.name.trim().toLowerCase().replace(/[^a-z0-9]/g, ''));
+    if (norm) {
+      registeredNormalizedNames.add(norm);
+    }
     return true;
   };
 

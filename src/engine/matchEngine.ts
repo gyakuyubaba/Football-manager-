@@ -437,10 +437,10 @@ export function simulateFullMatch(
   const rng = createPRNG(effectiveSeed);
 
   // Sanitize on-pitch starters (filter out any injured, suspended, or invalid club membership)
-  const sanitizeStarters = (club: Club, tactics: TeamTactics): string[] => {
-    const rawStarters = tactics.lineup.starters.map(s => s.playerId);
+  const sanitizeStarters = (club: Club, tactics?: TeamTactics): string[] => {
+    const rawStarters = (tactics?.lineup?.starters || []).map((s: any) => typeof s === 'string' ? s : s?.playerId).filter(Boolean);
     const valid: string[] = [];
-    const clubPlayerIds = club.playerIds || [];
+    const clubPlayerIds = club?.playerIds || [];
 
     rawStarters.forEach(pId => {
       const p = updatedPlayers[pId];

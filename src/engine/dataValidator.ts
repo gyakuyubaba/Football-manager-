@@ -299,9 +299,10 @@ export function checkPlayerDataIntegrity(
       continue;
     }
 
-    const canonicalName = player.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Remove punctuation, spaces, and separators while preserving Kanji, Hiragana, Katakana, Hangul, and Latin characters
+    const canonicalName = player.name.trim().toLowerCase().replace(/[\s\-_・·\.\,\'\"\(\)]/g, '') || player.name.trim().toLowerCase();
 
-    if (seenCanonical.has(canonicalName)) {
+    if (canonicalName && seenCanonical.has(canonicalName)) {
       const existingId = seenCanonical.get(canonicalName)!;
       result.duplicateNames.push(player.name);
       result.logs.push(`[DUPLICATE DETECTED] Duplicate player found: "${player.name}" (${existingId} vs ${player.id}). Eliminating duplicate clone.`);

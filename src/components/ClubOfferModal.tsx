@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Club, ManagerProfile, LeagueKey } from '../types/game';
-import { ALL_116_CLUBS } from '../data/clubsData';
+import { ALL_CLUBS } from '../data/clubsData';
 import { 
   Trophy, 
   DollarSign, 
@@ -13,7 +13,7 @@ import {
   Check, 
   Building2,
   ChevronRight,
-  Filter
+  Globe2
 } from 'lucide-react';
 
 interface Props {
@@ -23,80 +23,138 @@ interface Props {
   onBackToManagerCreation?: () => void;
 }
 
-const LEAGUES: { id: LeagueKey; name: string; flag: string }[] = [
-  { id: 'premier-league', name: 'プレミアリーグ (20クラブ)', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
-  { id: 'laliga', name: 'ラ・リーガ (20クラブ)', flag: '🇪🇸' },
-  { id: 'bundesliga', name: 'ブンデスリーガ (18クラブ)', flag: '🇩🇪' },
-  { id: 'serie-a', name: 'セリエA (20クラブ)', flag: '🇮🇹' },
-  { id: 'ligue-1', name: 'リーグ・アン (18クラブ)', flag: '🇫🇷' }
+const LEAGUES: { id: LeagueKey; name: string; flag: string; count: number }[] = [
+  { id: 'j1-league', name: 'J1リーグ', flag: '🇯🇵', count: 20 },
+  { id: 'premier-league', name: 'プレミアリーグ', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', count: 20 },
+  { id: 'laliga', name: 'ラ・リーガ', flag: '🇪🇸', count: 20 },
+  { id: 'bundesliga', name: 'ブンデスリーガ', flag: '🇩🇪', count: 18 },
+  { id: 'serie-a', name: 'セリエA', flag: '🇮🇹', count: 20 },
+  { id: 'ligue-1', name: 'リーグ・アン', flag: '🇫🇷', count: 18 }
 ];
 
 export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub, onBackToManagerCreation }) => {
-  const [selectedClubId, setSelectedClubId] = useState<string>(offers[0]?.id || 'arsenal');
+  // Default to first offer or Vissel Kobe if manager is Japanese
+  const initialDefaultId = (manager.nationality === '日本'
+    ? (offers.find(c => c.league === 'j1-league')?.id || 'vissel-kobe')
+    : (offers[0]?.id || 'arsenal'));
+
+  const [selectedClubId, setSelectedClubId] = useState<string>(initialDefaultId);
   const [viewMode, setViewMode] = useState<'offers' | 'all'>('offers');
-  const [selectedLeague, setSelectedLeague] = useState<LeagueKey>('premier-league');
+  const [selectedLeague, setSelectedLeague] = useState<LeagueKey | 'all'>('j1-league');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Find currently selected club from all clubs
-  const selectedClub = ALL_116_CLUBS.find(c => c.id === selectedClubId) || offers[0] || ALL_116_CLUBS[0];
+  // Find currently selected club from all 116 clubs (including J1 and offers)
+  const selectedClub = ALL_CLUBS.find(c => c.id === selectedClubId) || 
+                       offers.find(c => c.id === selectedClubId) || 
+                       offers[0] || 
+                       ALL_CLUBS[0];
 
   // Filtered clubs for "All Clubs" browse mode
-  const filteredClubs = ALL_116_CLUBS.filter(c => {
-    const matchLeague = c.league === selectedLeague;
-    const matchSearch = searchQuery.trim() === '' || 
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      c.shortName.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredClubs = ALL_CLUBS.filter(c => {
+    const matchLeague = selectedLeague === 'all' || c.league === selectedLeague;
+    const q = searchQuery.trim().toLowerCase();
+    const matchSearch = q === '' || 
+      c.name.toLowerCase().includes(q) || 
+      c.shortName.toLowerCase().includes(q) ||
+      c.stadiumName.toLowerCase().includes(q);
     return matchLeague && matchSearch;
   });
+
+  const handleSelectLeagueTab = (lgId: LeagueKey | 'all') => {
+    setSelectedLeague(lgId);
+    // Auto-select first club of selected league so preview and bottom bar update immediately
+    const firstOfLeague = ALL_CLUBS.find(c => c.league === lgId);
+    if (firstOfLeague) {
+      setSelectedClubId(firstOfLeague.id);
+    }
+  };
+
+  const handleOpenJ1Mode = () => {
+    setViewMode('all');
+    setSelectedLeague('j1-league');
+    const firstJ1 = ALL_CLUBS.find(c => c.league === 'j1-league');
+    if (firstJ1) {
+      setSelectedClubId(firstJ1.id);
+    }
+  };
+
+  const isCurrentJ1 = selectedClub.league === 'j1-league';
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950 text-slate-100 flex flex-col">
       {/* Scrollable Container with Bottom Padding for Sticky Bar */}
-      <div className="flex-1 w-full max-w-5xl mx-auto px-3.5 sm:px-6 pt-5 pb-32">
+      <div className="flex-1 w-full max-w-5xl mx-auto px-3.5 sm:px-6 pt-5 pb-44">
         
         {/* Top Header */}
         <div className="text-center mb-5">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-2">
             <Sparkles className="w-3.5 h-3.5" />
-            <span>2025/26 SEASON OFFICIAL PROPOSALS</span>
+            <span>2025/26 欧州5大リーグ ＋ 2025 J1リーグ公式全116クラブ収録</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white font-display">
-            監督就任オファーの受諾・クラブ決定
+            監督就任クラブの決定
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-xl mx-auto">
-            {manager.name}監督（{manager.style} / {manager.specialty}）の招聘を希望するクラブです。
+          <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl mx-auto">
+            {manager.name}監督（{manager.style} / {manager.specialty}）の招聘を希望するクラブ一覧です。推薦オファーに加え、<span className="text-amber-400 font-bold">J1全20クラブ</span>および欧州主要5大リーグ（全96クラブ）から自由に就任先を選択できます。
           </p>
         </div>
 
         {/* View Mode Switcher */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-5">
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
           <button
             type="button"
             onClick={() => setViewMode('offers')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
               viewMode === 'offers'
                 ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-850'
             }`}
           >
-            ★ 正式オファー（推薦5クラブ）
+            <Trophy className="w-4 h-4" />
+            <span>★ 推薦オファー（5クラブ）</span>
           </button>
+
           <button
             type="button"
-            onClick={() => setViewMode('all')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-              viewMode === 'all'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white'
+            onClick={handleOpenJ1Mode}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex items-center gap-2 ${
+              viewMode === 'all' && selectedLeague === 'j1-league'
+                ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 shadow-lg shadow-amber-400/25 ring-2 ring-amber-300'
+                : 'bg-slate-900 border border-amber-500/40 text-amber-300 hover:bg-amber-950/30 hover:border-amber-400'
             }`}
           >
-            🌍 全116クラブから自由に選択
+            <span className="text-base">🇯🇵</span>
+            <span>J1全20クラブから選択</span>
+            <span className="px-1.5 py-0.2 rounded bg-amber-950/40 text-[10px] text-amber-900 font-black border border-amber-500/40">
+              NEW
+            </span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('all');
+              if (selectedLeague === 'j1-league') {
+                setSelectedLeague('premier-league');
+                const firstPL = ALL_CLUBS.find(c => c.league === 'premier-league');
+                if (firstPL) setSelectedClubId(firstPL.id);
+              }
+            }}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              viewMode === 'all' && selectedLeague !== 'j1-league'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-850'
+            }`}
+          >
+            <Globe2 className="w-4 h-4" />
+            <span>欧州5大リーグ（96クラブ）から選択</span>
+          </button>
+
           {onBackToManagerCreation && (
             <button
               type="button"
               onClick={onBackToManagerCreation}
-              className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer"
+              className="px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-slate-900/80 border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-all cursor-pointer"
             >
               ← 監督設定に戻る
             </button>
@@ -105,74 +163,129 @@ export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub,
 
         {/* MODE 1: 5 OFFICIAL OFFERS */}
         {viewMode === 'offers' && (
-          <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 mb-6">
-            {offers.map(club => {
-              const isSelected = club.id === selectedClubId;
-              const tagLabel = 
-                club.tier === 'Elite' ? '強豪タイトル' :
-                club.tier === 'Upper' ? '欧州CL争い' :
-                club.tier === 'Mid' ? '中堅プロジェクト' : '残留＆再建';
+          <div className="space-y-3 mb-6">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-bold text-slate-400">推薦オファー（代理人が選定した5クラブ）</span>
+              <button 
+                type="button"
+                onClick={handleOpenJ1Mode}
+                className="text-xs text-amber-400 hover:underline flex items-center gap-1 font-semibold"
+              >
+                <span>J1クラブを探す</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
-              return (
-                <button
-                  key={club.id}
-                  type="button"
-                  onClick={() => setSelectedClubId(club.id)}
-                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer relative ${
-                    isSelected
-                      ? 'bg-slate-800 border-emerald-500 ring-2 ring-emerald-500/30 shadow-lg shadow-emerald-500/10'
-                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
-                  }`}
-                >
-                  {isSelected && (
-                    <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center">
-                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+              {offers.map(club => {
+                const isSelected = club.id === selectedClubId;
+                const isJ1 = club.league === 'j1-league';
+                const tagLabel = 
+                  club.tier === 'Elite' ? '強豪タイトル' :
+                  club.tier === 'Upper' ? '上位争い' :
+                  club.tier === 'Mid' ? '中堅プロジェクト' : '残留＆再建';
+
+                return (
+                  <div
+                    key={club.id}
+                    onClick={() => setSelectedClubId(club.id)}
+                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                      isSelected
+                        ? isJ1
+                          ? 'bg-slate-850 border-amber-400 ring-2 ring-amber-400/40 shadow-xl shadow-amber-500/10'
+                          : 'bg-slate-850 border-emerald-500 ring-2 ring-emerald-500/40 shadow-xl shadow-emerald-500/10'
+                        : 'bg-slate-900/90 border-slate-800 hover:border-slate-700 hover:bg-slate-850'
+                    }`}
+                  >
+                    {isSelected && (
+                      <div className={`absolute top-2.5 right-2.5 w-5 h-5 rounded-full flex items-center justify-center ${
+                        isJ1 ? 'bg-amber-400 text-slate-950' : 'bg-emerald-500 text-slate-950'
+                      }`}>
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div 
+                          className="w-4 h-4 rounded-full border border-white/20 shrink-0" 
+                          style={{ backgroundColor: club.primaryColor }}
+                        />
+                        <span className={`text-[10px] font-bold truncate uppercase font-mono px-1.5 py-0.5 rounded ${
+                          isJ1 ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {isJ1 ? '🇯🇵 J1 LEAGUE' : club.league.replace('-', ' ')}
+                        </span>
+                      </div>
+
+                      <div className="text-sm font-bold text-white truncate pr-4">
+                        {club.name}
+                      </div>
+
+                      <div className="text-[11px] text-emerald-400 font-semibold mt-1 font-mono">
+                        補強予算 €{(club.transferBudget / 1000000).toFixed(1)}M
+                      </div>
+
+                      <div className="text-[10px] text-slate-400 mt-1 truncate">
+                        本拠地: {club.stadiumName}
+                      </div>
                     </div>
-                  )}
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <div 
-                      className="w-4 h-4 rounded-full border border-white/20 shrink-0" 
-                      style={{ backgroundColor: club.primaryColor }}
-                    />
-                    <span className="text-[10px] text-slate-400 truncate uppercase font-mono">
-                      {club.league.replace('-', ' ')}
-                    </span>
+
+                    <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400">{tagLabel}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectClub(club.id);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer flex items-center gap-1 ${
+                          isSelected
+                            ? isJ1 ? 'bg-amber-400 text-slate-950 hover:bg-amber-300' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                        }`}
+                      >
+                        <span>就任する</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-xs sm:text-sm font-bold text-white truncate pr-4">
-                    {club.name}
-                  </div>
-                  <div className="text-[10px] text-emerald-400 font-semibold mt-1">
-                    補強予算 €{(club.transferBudget / 1000000).toFixed(1)}M
-                  </div>
-                  <div className="inline-block mt-2 px-2 py-0.5 rounded-md bg-slate-950/80 border border-slate-800 text-[10px] text-slate-400">
-                    {tagLabel}
-                  </div>
-                </button>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
-        {/* MODE 2: BROWSE ALL 116 CLUBS */}
+        {/* MODE 2: BROWSE ALL 116 CLUBS BY LEAGUE */}
         {viewMode === 'all' && (
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 mb-6 space-y-3.5">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 mb-6 space-y-4">
+            
             {/* League Tabs */}
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
-              {LEAGUES.map(lg => (
-                <button
-                  key={lg.id}
-                  type="button"
-                  onClick={() => setSelectedLeague(lg.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-                    selectedLeague === lg.id
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                      : 'bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700/60'
-                  }`}
-                >
-                  <span>{lg.flag}</span>
-                  <span>{lg.name}</span>
-                </button>
-              ))}
+              {LEAGUES.map(lg => {
+                const isActive = selectedLeague === lg.id;
+                const isJ1 = lg.id === 'j1-league';
+                return (
+                  <button
+                    key={lg.id}
+                    type="button"
+                    onClick={() => handleSelectLeagueTab(lg.id)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                      isActive
+                        ? isJ1
+                          ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/25 font-black'
+                          : 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                        : isJ1
+                          ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20'
+                          : 'bg-slate-800/80 text-slate-400 hover:text-white border border-slate-700/60'
+                    }`}
+                  >
+                    <span>{lg.flag}</span>
+                    <span>{lg.name}</span>
+                    <span className="text-[10px] opacity-75">({lg.count})</span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Search Input */}
@@ -182,40 +295,77 @@ export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub,
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="クラブ名で検索..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-emerald-500"
+                placeholder="クラブ名・略称・スタジアム名で検索 (例: 神戸, 町田, アーセナル, レアル)..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
               />
             </div>
 
             {/* Club Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-60 overflow-y-auto p-1">
-              {filteredClubs.map(c => {
-                const isSelected = c.id === selectedClubId;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setSelectedClubId(c.id)}
-                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-slate-800 border-emerald-500 ring-2 ring-emerald-500/20'
-                        : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <div 
-                        className="w-3 h-3 rounded-full border border-white/20 shrink-0" 
-                        style={{ backgroundColor: c.primaryColor }}
-                      />
-                      <span className="text-[10px] text-slate-400 font-mono">{c.shortName}</span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-h-72 overflow-y-auto p-1 scrollbar-thin">
+              {filteredClubs.length === 0 ? (
+                <div className="col-span-full py-8 text-center text-xs text-slate-500">
+                  該当するクラブが見つかりませんでした。検索条件を変更してください。
+                </div>
+              ) : (
+                filteredClubs.map(c => {
+                  const isSelected = c.id === selectedClubId;
+                  const isJ1 = c.league === 'j1-league';
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => setSelectedClubId(c.id)}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? isJ1
+                            ? 'bg-slate-850 border-amber-400 ring-2 ring-amber-400/30'
+                            : 'bg-slate-850 border-emerald-500 ring-2 ring-emerald-500/25'
+                          : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <div 
+                              className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0" 
+                              style={{ backgroundColor: c.primaryColor }}
+                            />
+                            <span className="text-[10px] text-slate-400 font-mono font-bold truncate">{c.shortName}</span>
+                          </div>
+                          {isSelected && (
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
+                              isJ1 ? 'bg-amber-400 text-slate-950' : 'bg-emerald-500 text-slate-950'
+                            }`}>
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-xs sm:text-sm font-bold text-white truncate">{c.name}</div>
+                        <div className="text-[10px] text-emerald-400 font-mono mt-0.5">
+                          予算 €{(c.transferBudget / 1000000).toFixed(1)}M
+                        </div>
+                      </div>
+
+                      <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                        <span className="text-[9px] text-slate-400">{c.tier}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectClub(c.id);
+                          }}
+                          className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all cursor-pointer ${
+                            isSelected
+                              ? isJ1 ? 'bg-amber-400 text-slate-950 hover:bg-amber-300' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                          }`}
+                        >
+                          就任する →
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-xs font-bold text-white truncate">{c.name}</div>
-                    <div className="text-[10px] text-emerald-400 font-mono mt-0.5">
-                      €{(c.transferBudget / 1000000).toFixed(1)}M
-                    </div>
-                  </button>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         )}
@@ -241,8 +391,12 @@ export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub,
                     <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[11px] text-slate-300 font-medium">
                       {selectedClub.country}
                     </span>
-                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-400 font-medium uppercase font-mono">
-                      {selectedClub.league.replace('-', ' ')}
+                    <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold uppercase font-mono border ${
+                      isCurrentJ1 
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' 
+                        : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    }`}>
+                      {isCurrentJ1 ? '🇯🇵 J1 LEAGUE' : selectedClub.league.replace('-', ' ')}
                     </span>
                   </div>
                   <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
@@ -335,7 +489,7 @@ export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub,
 
       </div>
 
-      {/* Fixed Sticky Action Bar at Bottom: NEVER CUT OFF */}
+      {/* Fixed Sticky Action Bar at Bottom */}
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900/95 border-t border-slate-800 backdrop-blur-md px-4 py-3 sm:py-4 shadow-2xl">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           
@@ -348,7 +502,7 @@ export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub,
             </div>
             <div className="truncate">
               <div className="text-xs text-slate-400 truncate">
-                選択中: <span className="text-white font-bold">{selectedClub.name}</span> ({selectedClub.league.replace('-', ' ')})
+                選択中: <span className="text-white font-bold">{selectedClub.name}</span> ({isCurrentJ1 ? '🇯🇵 J1 LEAGUE' : selectedClub.league.replace('-', ' ')})
               </div>
               <div className="text-[11px] text-emerald-400 font-mono">
                 補強予算 €{(selectedClub.transferBudget / 1000000).toFixed(1)}M · 提示年俸 €{(selectedClub.tier === 'Elite' ? 3800000 : selectedClub.tier === 'Upper' ? 2200000 : selectedClub.tier === 'Mid' ? 1200000 : 650000).toLocaleString()}
@@ -359,7 +513,11 @@ export const ClubOfferModal: React.FC<Props> = ({ manager, offers, onSelectClub,
           <button
             type="button"
             onClick={() => onSelectClub(selectedClub.id)}
-            className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-emerald-500/25 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+            className={`w-full sm:w-auto px-8 py-3.5 rounded-2xl font-extrabold text-sm sm:text-base transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer shrink-0 active:scale-[0.98] ${
+              isCurrentJ1 
+                ? 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 shadow-amber-500/25 ring-2 ring-amber-300'
+                : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/25'
+            }`}
           >
             <span>{selectedClub.name} の監督就任契約にサインする</span>
             <ArrowRight className="w-5 h-5 stroke-[2.5]" />

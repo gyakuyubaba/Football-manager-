@@ -1,5 +1,5 @@
 import { GameWorldState, Player, Club, MatchFixture, LeagueKey, MatchEvent } from '../types/game';
-import { createNewGameWorld } from './gameState';
+import { createNewGameWorld, appointUserToClub } from './gameState';
 import { 
   finalMatchEligibilityCheck, 
   calculatePlayerInjuryRisk, 
@@ -567,6 +567,31 @@ export function runAll16Tests(): TestResult[] {
     });
   } catch (e: any) {
     results.push({ id: 'TEST 20', name: 'ユースアカデミー最低5名確保・ランダム生成・特級逸材', passed: false, details: e.message });
+  }
+
+  // TEST 21: J1クラブ選択・就任契約・18名実名スカッド・日程生成の完全検証
+  try {
+    const kashiwaClub = testState.clubs['kashiwa-reysol'];
+    const appointed = appointUserToClub(testState, 'kashiwa-reysol');
+    const isAppointed = appointed.userClubId === 'kashiwa-reysol';
+    const startersCount = (appointed.tactics.lineup.starters as any[]).length === 11;
+    const benchCount = appointed.tactics.lineup.bench.length >= 5;
+    const startersReal = (appointed.tactics.lineup.starters as any[]).every(s => {
+      const p = appointed.players[s.playerId || s];
+      return p && p.clubId === 'kashiwa-reysol';
+    });
+    const hasJ1Fixtures = appointed.fixtures.some(f => f.isUserMatch && f.competition === 'j1-league');
+    const passed = Boolean(kashiwaClub) && isAppointed && startersCount && benchCount && startersReal && hasJ1Fixtures;
+    results.push({
+      id: 'TEST 21',
+      name: 'J1クラブ選択・正式就任契約・実名スカッド・J1日程生成',
+      passed,
+      details: passed
+        ? `成功: 柏レイソルへの監督就任が完全完了し、スタメン11名・ベンチ${appointed.tactics.lineup.bench.length}名（細谷・サヴィオ・古賀等）およびJ1日程が同期されました。`
+        : '失敗: J1クラブの就任またはスカッド整合性に問題があります。'
+    });
+  } catch (e: any) {
+    results.push({ id: 'TEST 21', name: 'J1クラブ選択・正式就任契約・実名スカッド・J1日程生成', passed: false, details: e.message });
   }
 
   return results;

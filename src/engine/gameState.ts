@@ -217,10 +217,11 @@ export function createNewGameWorld(manager: ManagerProfile, difficultySettings?:
 
 // -------------------------------------------------------------
 // 【1. 最初の5クラブからのオファーを完全ランダム化】
-// Dynamically randomized 5 initial offers with balanced distribution across European tiers:
+// Dynamically randomized 5 initial offers with balanced distribution across tiers:
 // - 1 Lower Tier club (relegation fight / survival)
 // - 2 Mid Tier clubs (different leagues)
 // - 2 Upper / Elite Tier clubs (reputable ambition)
+// If J.League is enabled, ensure J1 is represented prominently among the offers.
 // -------------------------------------------------------------
 export function getInitialClubOffers(allClubs: Record<string, Club>, manager?: ManagerProfile): Club[] {
   const clubList = Object.values(allClubs);
@@ -236,13 +237,6 @@ export function getInitialClubOffers(allClubs: Record<string, Club>, manager?: M
     return copy;
   };
 
-  // 1. Lower Tier clubs (survival battles)
-  const lowerClubs = shuffle(clubList.filter(c => c.tier === 'Lower'));
-  // 2. Mid Tier clubs (ambitious mid-table)
-  const midClubs = shuffle(clubList.filter(c => c.tier === 'Mid'));
-  // 3. Upper / Elite Tier clubs (title & continental contention)
-  const upperClubs = shuffle(clubList.filter(c => c.tier === 'Upper' || c.tier === 'Elite'));
-
   const picked: Club[] = [];
   const pickedIds = new Set<string>();
 
@@ -255,10 +249,30 @@ export function getInitialClubOffers(allClubs: Record<string, Club>, manager?: M
     return false;
   };
 
-  // Add 1 Lower Tier Club
-  tryAdd(lowerClubs[0]);
+  // If J.League enabled, guarantee at least 1-2 J1 clubs in the initial offers
+  if (ENABLE_J_LEAGUE) {
+    const j1Clubs = shuffle(clubList.filter(c => c.league === 'j1-league'));
+    if (j1Clubs.length > 0) {
+      tryAdd(j1Clubs[0]);
+      if (manager?.nationality === '日本' && j1Clubs.length > 1) {
+        tryAdd(j1Clubs[1]);
+      }
+    }
+  }
 
-  // Add 2 Mid Tier Clubs from different leagues if possible
+  // 1. Lower Tier clubs (survival battles)
+  const lowerClubs = shuffle(clubList.filter(c => c.tier === 'Lower' && !pickedIds.has(c.id)));
+  // 2. Mid Tier clubs (ambitious mid-table)
+  const midClubs = shuffle(clubList.filter(c => c.tier === 'Mid' && !pickedIds.has(c.id)));
+  // 3. Upper / Elite Tier clubs (title & continental contention)
+  const upperClubs = shuffle(clubList.filter(c => (c.tier === 'Upper' || c.tier === 'Elite') && !pickedIds.has(c.id)));
+
+  // Add 1 Lower Tier Club if room
+  if (picked.length < 5 && lowerClubs[0]) {
+    tryAdd(lowerClubs[0]);
+  }
+
+  // Add Mid Tier Clubs from different leagues if possible
   for (const mc of midClubs) {
     if (picked.length >= 3) break;
     const existingLeagues = picked.map(p => p.league);
@@ -267,7 +281,7 @@ export function getInitialClubOffers(allClubs: Record<string, Club>, manager?: M
     }
   }
 
-  // Add 2 Upper/Elite Clubs
+  // Add Upper/Elite Clubs
   for (const uc of upperClubs) {
     if (picked.length >= 5) break;
     const existingLeagues = picked.map(p => p.league);
@@ -345,7 +359,7 @@ export function validateInitialWorldState(state: GameWorldState): { valid: boole
     errors.push(`開始日付が正しくありません (現在: ${state.currentDate})`);
   }
 
-  const leagues: LeagueKey[] = ['premier-league', 'laliga', 'bundesliga', 'serie-a', 'ligue-1'];
+  const leagues: LeagueKey[] = ['premier-league', 'laliga', 'bundesliga', 'serie-a', 'ligue-1', ...(ENABLE_J_LEAGUE ? ['j1-league' as LeagueKey] : [])];
   leagues.forEach(l => {
     if (!state.standings[l] || state.standings[l].length === 0) {
       errors.push(`リーグ順位表が存在しません (${l})`);
@@ -491,6 +505,45 @@ export function saveGameState(state: GameWorldState): boolean {
   }
 }
 
+export function migrateJLeagueIntoExistingState(state: GameWorldState): GameWorldState {
+  if (!ENABLE_J_LEAGUE) return state;
+  const initialClubsMap: Record<string, Club> = {};
+  ALL_CLUBS.forEach(c => {
+    initialClubsMap[c.id] = state.clubs[c.id] ? { ...state.clubs[c.id] } : { ...c, playerIds: [] };
+  });
+
+  const registry = buildCompletePlayersRegistry();
+  const { clubs, players } = populateClubsWithDefaultSquads(initialClubsMap, { ...state.players, ...registry });
+
+  // Ensure j1-league standings
+  const updatedStandings = { ...state.standings };
+  if (!updatedStandings['j1-league'] || updatedStandings['j1-league'].length === 0) {
+    const j1Clubs = Object.values(clubs).filter(c => c.league === 'j1-league');
+    updatedStandings['j1-league'] = j1Clubs.map(c => ({
+      clubId: c.id,
+      clubName: c.name,
+      played: 0,
+      won: 0,
+      drawn: 0,
+      lost: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      goalDiff: 0,
+      points: 0,
+      form: []
+    }));
+  }
+
+  const updated: GameWorldState = {
+    ...state,
+    clubs,
+    players,
+    standings: updatedStandings
+  };
+  saveGameState(updated);
+  return updated;
+}
+
 export function loadGameState(): GameWorldState | null {
   try {
     if (typeof window === 'undefined' || !window.localStorage) {
@@ -502,14 +555,24 @@ export function loadGameState(): GameWorldState | null {
       window.localStorage.removeItem('fm26_career_save_v1');
       return null;
     }
-    const state: GameWorldState = JSON.parse(raw);
+    let state: GameWorldState = JSON.parse(raw);
     
     // Auto-migrate check: if less than 96 clubs, missing manager, or outdated season
     if (!state.clubs || Object.keys(state.clubs).length < 96 || state.season !== '2026/27') {
-      console.warn('Legacy save detected. Resetting to 2026/27 European 96 clubs real database.');
+      console.warn('Legacy save detected. Resetting to 2026/27 European 96 + J1 20 clubs real database.');
       window.localStorage.removeItem(SAVE_KEY);
       return null;
     }
+
+    // Auto-migrate for J1 League: if missing J1 clubs in save
+    if (ENABLE_J_LEAGUE && (!state.clubs['vissel-kobe'] || Object.keys(state.clubs).length < 116)) {
+      if (!state.userClubId) {
+        console.warn('Unselected club state without J1 detected. Initializing all 116 clubs for selection.');
+        return createNewGameWorld(state.manager, state.difficultySettings);
+      }
+      state = migrateJLeagueIntoExistingState(state);
+    }
+
     if (!state.difficultySettings) {
       state.difficultySettings = { ...DEFAULT_DIFFICULTY_SETTINGS };
     }
