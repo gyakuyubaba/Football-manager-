@@ -1,10 +1,10 @@
 import { Player, Position, Club, TeamTactics } from '../types/game';
-import { ALL_116_CLUBS, ENABLE_J_LEAGUE } from './clubsData';
+import { ALL_CLUBS, ALL_116_CLUBS, ENABLE_J_LEAGUE } from './clubsData';
 import { CURATED_REAL_SQUADS } from './squadsCatalog';
 import { ADDITIONAL_CLUB_SEEDS } from './allClubsSquads';
 import { makeRealPlayer } from './realPlayersDatabase';
 import { checkPlayerDataIntegrity } from '../engine/dataValidator';
-import { generateFullJLeaguePlayers } from './jLeagueData';
+import { generateFullJLeaguePlayers, J2_20_CLUBS } from './jLeagueData';
 
 // Standard 25 squad positions template (3 GKs, 4 CBs, 2 LBs, 2 RBs, 2 CDMs, 2 CMs, 2 CAMs, 1 LM, 1 RM, 1 LW, 1 RW, 3 STs, 1 CF)
 const SQUAD_POSITIONS_TEMPLATE: Position[] = [
@@ -97,6 +97,20 @@ const DEPTH_NAMES_BY_COUNTRY: Record<string, { firstNames: string[]; lastNames: 
       'Grandchamp', 'Puydebat', 'Hautefort', 'Bellerive', 'Argenteuil', 'Boisrond', 'Courtemanche', 'Delaunay', 'Estrébelle', 'Fauconberg',
       'Gaucheron', 'Hardivillier', 'Isambert', 'Jolicoeur', 'Keroualle', 'Larmagnac', 'Montmorillon', 'Neuville', 'Orbec', 'Portefaix',
       'Quimperlé', 'Rochedieu', 'Sainte-Beuve', 'Tremblay', 'Ussé', 'Valmousquet', 'Wicquefort', 'Aubervilliers', 'Bréval', 'Corbineau'
+    ]
+  },
+  '日本': {
+    firstNames: [
+      '翔太', '大輝', '拓海', '悠人', '陸', '駿', '颯太', '蓮', '優斗', '陽斗',
+      '大樹', '和樹', '健太', '裕樹', '直人', '航平', '亮', '慎平', '翼', '海斗',
+      '陽向', '蒼', '樹', '朝陽', '圭佑', '諒', '大輔', '勇人', '拓哉', '健人',
+      '康平', '達也', '将太', '雄大', '剛', '大雅', '巧', '翔', '陸斗', '遥斗'
+    ],
+    lastNames: [
+      '佐藤', '鈴木', '高橋', '田中', '渡辺', '伊藤', '山本', '中村', '小林', '加藤',
+      '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村', '林', '斎藤', '清水',
+      '山崎', '森', '池田', '橋本', '阿部', '石川', '山下', '中島', '石井', '小川',
+      '前田', '岡田', '長谷川', '藤田', '後藤', '近藤', '村上', '遠藤', '青木', '坂本'
     ]
   }
 };
@@ -197,22 +211,41 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
     });
   });
 
-  // 3. Ensure all 96 European clubs have at least 25 fully structured players across all age brackets
-  ALL_116_CLUBS.forEach((club, clubIdx) => {
-    const existing = Object.values(registry).filter(p => p.clubId === club.id);
+  // 3. First load all authentic J-League players (J1 and J2 authentic rosters)
+  let baseRegistry = registry;
+  if (ENABLE_J_LEAGUE) {
+    baseRegistry = generateFullJLeaguePlayers(baseRegistry);
+  }
+
+  // 4. Ensure all clubs (all 96 European clubs + all 20 J1 clubs + all 20 J2 clubs) have at least 25 players across positions
+  const allClubsToEnsure: Club[] = [
+    ...ALL_CLUBS,
+    ...(ENABLE_J_LEAGUE ? J2_20_CLUBS : [])
+  ];
+
+  // Deduplicate clubs by id
+  const uniqueClubsMap = new Map<string, Club>();
+  allClubsToEnsure.forEach(c => uniqueClubsMap.set(c.id, c));
+  const uniqueClubs = Array.from(uniqueClubsMap.values());
+
+  uniqueClubs.forEach((club, clubIdx) => {
+    const existing = Object.values(baseRegistry).filter(p => p.clubId === club.id);
     const needed = Math.max(0, 25 - existing.length);
 
     if (needed > 0) {
+      const isJapan = club.country === '日本';
       const depthData = DEPTH_NAMES_BY_COUNTRY[club.country] || DEPTH_NAMES_BY_COUNTRY['イングランド'];
-      const tierBaseOvr = club.tier === 'Elite' ? 80 : club.tier === 'Upper' ? 76 : club.tier === 'Mid' ? 72 : 68;
+      const tierBaseOvr = isJapan
+        ? (club.league === 'j1-league' ? 73 : 69)
+        : (club.tier === 'Elite' ? 80 : club.tier === 'Upper' ? 76 : club.tier === 'Mid' ? 72 : 68);
 
       for (let i = 0; i < needed; i++) {
         const pos = SQUAD_POSITIONS_TEMPLATE[(existing.length + i) % SQUAD_POSITIONS_TEMPLATE.length];
         
-        // Generate non-colliding authentic full name from dedicated pools
+        // Generate authentic full name (Surname First for Japanese players)
         const fName = depthData.firstNames[(clubIdx * 5 + i * 2) % depthData.firstNames.length];
         const lName = depthData.lastNames[(clubIdx * 7 + i * 3) % depthData.lastNames.length];
-        const uniqueFullName = `${fName} ${lName}`;
+        const uniqueFullName = isJapan ? `${lName} ${fName}` : `${fName} ${lName}`;
         const pId = `p_${club.id}_depth_${existing.length + i + 1}`;
 
         // Distribute age across the 6 specified brackets (16-19, 20-23, 24-28, 29-32, 33-36, 37+)
@@ -220,7 +253,7 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
         
         // Realistic OVR based on age and club tier
         let ovrModifier = (i % 3) - 1;
-        if (age <= 19) ovrModifier -= 4; // Young prospects have raw OVR but sky-high potential
+        if (age <= 19) ovrModifier -= 4; // Young prospects have raw OVR but high potential
         else if (age <= 22) ovrModifier -= 1;
         else if (age >= 34) ovrModifier -= 1;
 
@@ -244,20 +277,25 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
           club.country,
           ovr,
           potential,
-          club.tier === 'Elite' ? 16000000 : club.tier === 'Upper' ? 8000000 : 2500000,
-          club.tier === 'Elite' ? 55000 : club.tier === 'Upper' ? 30000 : 12000,
+          isJapan
+            ? (club.league === 'j1-league' ? 800000 : 450000)
+            : (club.tier === 'Elite' ? 16000000 : club.tier === 'Upper' ? 8000000 : 2500000),
+          isJapan
+            ? (club.league === 'j1-league' ? 14000 : 9000)
+            : (club.tier === 'Elite' ? 55000 : club.tier === 'Upper' ? 30000 : 12000),
           26 + ((i * 3) % 65),
           i % 3 === 0 ? '左' : '右',
           pos === 'GK' ? 'ショットストッパー' : pos === 'CB' ? 'ボール運べるCB' : 'チャンスメイカー'
         );
 
-        addPlayerIfUnique(player);
+        if (!baseRegistry[player.id]) {
+          baseRegistry[player.id] = player;
+        }
       }
     }
   });
 
-  const completeRegistry = ENABLE_J_LEAGUE ? generateFullJLeaguePlayers(registry) : registry;
-  return completeRegistry;
+  return baseRegistry;
 }
 
 export function populateClubsWithDefaultSquads(

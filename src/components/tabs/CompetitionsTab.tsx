@@ -11,11 +11,16 @@ interface Props {
 
 const ALL_LEAGUE_NAMES: Record<LeagueKey, string> = {
   'premier-league': 'Premier League (イングランド)',
+  'championship': 'EFL Championship (イングランド2部)',
   'laliga': 'LaLiga (スペイン)',
+  'segunda-division': 'Segunda División (スペイン2部)',
   'bundesliga': 'Bundesliga (ドイツ)',
+  '2-bundesliga': '2. Bundesliga (ドイツ2部)',
   'serie-a': 'Serie A (イタリア)',
+  'serie-b': 'Serie B (イタリア2部)',
   'ligue-1': 'Ligue 1 (フランス)',
-  'j1-league': '明治安田J1リーグ (日本)',
+  'ligue-2': 'Ligue 2 (フランス2部)',
+  'j1-league': '明治安田J1百年構想リーグ (日本)',
   'j2-league': '明治安田J2リーグ (日本)',
   'j3-league': '明治安田J3リーグ (日本)'
 };

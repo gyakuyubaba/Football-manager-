@@ -11,6 +11,7 @@ import {
   DEFAULT_DIFFICULTY_SETTINGS
 } from '../types/game';
 import { ALL_CLUBS, ENABLE_J_LEAGUE } from '../data/clubsData';
+import { J1_20_CLUBS, J2_20_CLUBS } from '../data/jLeagueData';
 import { INITIAL_YOUTH_ACADEMY } from '../data/initialData';
 import { buildCompletePlayersRegistry, populateClubsWithDefaultSquads, getDefaultTacticsForClub } from '../data/squadPopulator';
 import { getDaysUntilDeadline } from './dateEngine';
@@ -156,7 +157,11 @@ export function generateSeasonFixtures(clubs: Record<string, Club>, userClubId: 
 
 export function createNewGameWorld(manager: ManagerProfile, difficultySettings?: DifficultySettings): GameWorldState {
   const initialClubsMap: Record<string, Club> = {};
-  ALL_CLUBS.forEach(c => {
+  const allClubsList = [
+    ...ALL_CLUBS,
+    ...(ENABLE_J_LEAGUE ? J2_20_CLUBS : [])
+  ];
+  allClubsList.forEach(c => {
     initialClubsMap[c.id] = { ...c, playerIds: [] };
   });
 
@@ -304,13 +309,22 @@ export function getInitialClubOffers(allClubs: Record<string, Club>, manager?: M
 
 // Player accepts one of the club offers
 export function appointUserToClub(state: GameWorldState, chosenClubId: string): GameWorldState {
-  const updatedClubs = { ...state.clubs };
+  let updatedClubs = { ...state.clubs };
+  let updatedPlayers = { ...state.players };
+
+  // If chosenClubId is missing or has less than 15 players, run full migration
+  if (!updatedClubs[chosenClubId] || (updatedClubs[chosenClubId].playerIds?.length || 0) < 15) {
+    const migrated = migrateJLeagueIntoExistingState(state);
+    updatedClubs = migrated.clubs;
+    updatedPlayers = migrated.players;
+  }
+
   Object.values(updatedClubs).forEach(c => {
     c.isUserClub = c.id === chosenClubId;
   });
 
-  const chosenClub = updatedClubs[chosenClubId];
-  const userTactics = getDefaultTacticsForClub(chosenClub, state.players);
+  const chosenClub = updatedClubs[chosenClubId] || ALL_CLUBS.find(c => c.id === chosenClubId) || J2_20_CLUBS.find(c => c.id === chosenClubId);
+  const userTactics = getDefaultTacticsForClub(chosenClub, updatedPlayers);
   const fixtures = generateSeasonFixtures(updatedClubs, chosenClubId);
 
   const appointNews: NewsItem = {
@@ -327,6 +341,7 @@ export function appointUserToClub(state: GameWorldState, chosenClubId: string): 
     ...state,
     userClubId: chosenClubId,
     clubs: updatedClubs,
+    players: updatedPlayers,
     tactics: userTactics,
     fixtures,
     news: [appointNews, ...state.news],
@@ -508,36 +523,62 @@ export function saveGameState(state: GameWorldState): boolean {
 export function migrateJLeagueIntoExistingState(state: GameWorldState): GameWorldState {
   if (!ENABLE_J_LEAGUE) return state;
   const initialClubsMap: Record<string, Club> = {};
-  ALL_CLUBS.forEach(c => {
+  const allClubsList = [
+    ...ALL_CLUBS,
+    ...J2_20_CLUBS
+  ];
+  allClubsList.forEach(c => {
     initialClubsMap[c.id] = state.clubs[c.id] ? { ...state.clubs[c.id] } : { ...c, playerIds: [] };
   });
 
   const registry = buildCompletePlayersRegistry();
   const { clubs, players } = populateClubsWithDefaultSquads(initialClubsMap, { ...state.players, ...registry });
 
-  // Ensure j1-league standings
+  // Ensure j1-league and j2-league standings
   const updatedStandings = { ...state.standings };
-  if (!updatedStandings['j1-league'] || updatedStandings['j1-league'].length === 0) {
-    const j1Clubs = Object.values(clubs).filter(c => c.league === 'j1-league');
-    updatedStandings['j1-league'] = j1Clubs.map(c => ({
-      clubId: c.id,
-      clubName: c.name,
-      played: 0,
-      won: 0,
-      drawn: 0,
-      lost: 0,
-      goalsFor: 0,
-      goalsAgainst: 0,
-      goalDiff: 0,
-      points: 0,
-      form: []
-    }));
+  ['j1-league', 'j2-league'].forEach(lgKey => {
+    const k = lgKey as LeagueKey;
+    if (!updatedStandings[k] || updatedStandings[k].length === 0) {
+      const lgClubs = Object.values(clubs).filter(c => c.league === k);
+      updatedStandings[k] = lgClubs.map(c => ({
+        clubId: c.id,
+        clubName: c.name,
+        played: 0,
+        won: 0,
+        drawn: 0,
+        lost: 0,
+        goalsFor: 0,
+        goalsAgainst: 0,
+        goalDiff: 0,
+        points: 0,
+        form: []
+      }));
+    }
+  });
+
+  // Re-verify user tactics if userClubId is set
+  let userTactics = state.tactics;
+  if (state.userClubId && clubs[state.userClubId]) {
+    const userClub = clubs[state.userClubId];
+    const startersValid = userTactics?.lineup?.starters?.length === 11 && 
+      userTactics.lineup.starters.every(s => s.playerId && !!players[s.playerId]);
+    if (!startersValid) {
+      userTactics = getDefaultTacticsForClub(userClub, players);
+    }
+  }
+
+  // Ensure fixtures exist if userClubId is set but fixtures are empty
+  let fixtures = state.fixtures || [];
+  if (state.userClubId && fixtures.length === 0) {
+    fixtures = generateSeasonFixtures(clubs, state.userClubId);
   }
 
   const updated: GameWorldState = {
     ...state,
     clubs,
     players,
+    tactics: userTactics,
+    fixtures,
     standings: updatedStandings
   };
   saveGameState(updated);
@@ -549,7 +590,7 @@ export function loadGameState(): GameWorldState | null {
     if (typeof window === 'undefined' || !window.localStorage) {
       return null;
     }
-    // Check v2 save first
+    // Check save
     const raw = window.localStorage.getItem(SAVE_KEY);
     if (!raw) {
       window.localStorage.removeItem('fm26_career_save_v1');
@@ -564,10 +605,20 @@ export function loadGameState(): GameWorldState | null {
       return null;
     }
 
-    // Auto-migrate for J1 League: if missing J1 clubs in save
-    if (ENABLE_J_LEAGUE && (!state.clubs['vissel-kobe'] || Object.keys(state.clubs).length < 116)) {
+    // Auto-migrate for J-League 25/26: ensure all 136 clubs, complete squads (>=18 players), and valid tactics
+    const totalClubs = Object.keys(state.clubs || {}).length;
+    const isMissingClubs = totalClubs < 136;
+    const hasIncompleteSquad = J1_20_CLUBS.some(c => (state.clubs[c.id]?.playerIds?.length || 0) < 18) ||
+      J2_20_CLUBS.some(c => (state.clubs[c.id]?.playerIds?.length || 0) < 18);
+    const hasInvalidTactics = !!state.userClubId && (
+      !state.tactics?.lineup?.starters ||
+      state.tactics.lineup.starters.length < 11 ||
+      state.tactics.lineup.starters.some(s => !s.playerId || !state.players[s.playerId])
+    );
+
+    if (ENABLE_J_LEAGUE && (isMissingClubs || hasIncompleteSquad || hasInvalidTactics)) {
       if (!state.userClubId) {
-        console.warn('Unselected club state without J1 detected. Initializing all 116 clubs for selection.');
+        console.warn('Unselected club state without full J1/J2 squads. Initializing all clubs for selection.');
         return createNewGameWorld(state.manager, state.difficultySettings);
       }
       state = migrateJLeagueIntoExistingState(state);

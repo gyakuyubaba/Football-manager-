@@ -266,23 +266,23 @@ export const J1_20_CLUBS: Club[] = [
     playerIds: []
   },
   {
-    id: 'shonan-bellmare',
-    name: '湘南ベルマーレ',
-    shortName: '湘南',
+    id: 'mito-hollyhock',
+    name: '水戸ホーリーホック',
+    shortName: '水戸',
     league: 'j1-league',
     country: '日本',
-    tier: 'Lower',
-    reputation: 73,
-    transferBudget: 6000000,
-    wageBudget: 180000,
-    currentWageSpend: 160000,
-    target: 'リーグ残留',
-    fanExpectation: '残留最優先',
-    stadiumName: 'レモンガススタジアム平塚',
-    stadiumCapacity: 15380,
-    primaryColor: '#7DBA00',
-    secondaryColor: '#0055A5',
-    currentFormation: '3-5-2',
+    tier: 'Mid',
+    reputation: 74,
+    transferBudget: 7500000,
+    wageBudget: 220000,
+    currentWageSpend: 190000,
+    target: '上位進出',
+    fanExpectation: '現実的（堅実な戦い）',
+    stadiumName: 'ケーズデンキスタジアム水戸',
+    stadiumCapacity: 12000,
+    primaryColor: '#002B7F',
+    secondaryColor: '#009FD7',
+    currentFormation: '4-4-2',
     playerIds: []
   },
   {
@@ -306,23 +306,23 @@ export const J1_20_CLUBS: Club[] = [
     playerIds: []
   },
   {
-    id: 'albirex-niigata',
-    name: 'アルビレックス新潟',
-    shortName: '新潟',
+    id: 'jef-united-chiba',
+    name: 'ジェフユナイテッド千葉',
+    shortName: '千葉',
     league: 'j1-league',
     country: '日本',
-    tier: 'Mid',
-    reputation: 75,
-    transferBudget: 7500000,
-    wageBudget: 220000,
-    currentWageSpend: 190000,
-    target: '中位安定',
-    fanExpectation: '現実的（堅実な戦い）',
-    stadiumName: 'デンカビッグスワンスタジアム',
-    stadiumCapacity: 42300,
-    primaryColor: '#F36C21',
-    secondaryColor: '#002B7F',
-    currentFormation: '4-2-3-1',
+    tier: 'Upper',
+    reputation: 77,
+    transferBudget: 8500000,
+    wageBudget: 260000,
+    currentWageSpend: 220000,
+    target: '上位進出',
+    fanExpectation: '高い（上位争い）',
+    stadiumName: 'フクダ電子アリーナ',
+    stadiumCapacity: 19781,
+    primaryColor: '#FFF100',
+    secondaryColor: '#006432',
+    currentFormation: '4-4-2',
     playerIds: []
   },
   {
@@ -366,23 +366,23 @@ export const J1_20_CLUBS: Club[] = [
     playerIds: []
   },
   {
-    id: 'yokohama-fc',
-    name: '横浜FC',
-    shortName: '横浜FC',
+    id: 'v-varen-nagasaki',
+    name: 'V・ファーレン長崎',
+    shortName: '長崎',
     league: 'j1-league',
     country: '日本',
-    tier: 'Lower',
-    reputation: 73,
-    transferBudget: 6500000,
-    wageBudget: 200000,
-    currentWageSpend: 170000,
-    target: 'リーグ残留',
-    fanExpectation: '残留最優先',
-    stadiumName: 'ニッパツ三ツ沢球技場',
-    stadiumCapacity: 15454,
-    primaryColor: '#009FD7',
-    secondaryColor: '#FFFFFF',
-    currentFormation: '3-4-2-1',
+    tier: 'Upper',
+    reputation: 77,
+    transferBudget: 10000000,
+    wageBudget: 280000,
+    currentWageSpend: 240000,
+    target: '上位進出',
+    fanExpectation: '極めて高い（タイトル必須）',
+    stadiumName: 'PEACE STADIUM Connected by SoftBank',
+    stadiumCapacity: 20027,
+    primaryColor: '#002B7F',
+    secondaryColor: '#F37021',
+    currentFormation: '4-2-3-1',
     playerIds: []
   },
   {
@@ -408,16 +408,16 @@ export const J1_20_CLUBS: Club[] = [
 ];
 
 export const J2_20_CLUBS: Club[] = [
+  { id: 'shonan-bellmare', name: '湘南ベルマーレ', shortName: '湘南', league: 'j2-league', country: '日本', tier: 'Upper', reputation: 74, transferBudget: 6000000, wageBudget: 180000, currentWageSpend: 160000, target: 'リーグ優勝', fanExpectation: '極めて高い（タイトル必須）', stadiumName: 'レモンガススタジアム平塚', stadiumCapacity: 15380, primaryColor: '#7DBA00', secondaryColor: '#0055A5', currentFormation: '3-5-2', playerIds: [] },
+  { id: 'albirex-niigata', name: 'アルビレックス新潟', shortName: '新潟', league: 'j2-league', country: '日本', tier: 'Upper', reputation: 75, transferBudget: 7500000, wageBudget: 220000, currentWageSpend: 190000, target: 'リーグ優勝', fanExpectation: '極めて高い（タイトル必須）', stadiumName: 'デンカビッグスワンスタジアム', stadiumCapacity: 42300, primaryColor: '#F36C21', secondaryColor: '#002B7F', currentFormation: '4-2-3-1', playerIds: [] },
+  { id: 'yokohama-fc', name: '横浜FC', shortName: '横浜FC', league: 'j2-league', country: '日本', tier: 'Upper', reputation: 74, transferBudget: 6500000, wageBudget: 200000, currentWageSpend: 170000, target: 'リーグ優勝', fanExpectation: '極めて高い（タイトル必須）', stadiumName: 'ニッパツ三ツ沢球技場', stadiumCapacity: 15454, primaryColor: '#009FD7', secondaryColor: '#FFFFFF', currentFormation: '3-4-2-1', playerIds: [] },
   { id: 'jubilo-iwata', name: 'ジュビロ磐田', shortName: '磐田', league: 'j2-league', country: '日本', tier: 'Upper', reputation: 75, transferBudget: 6000000, wageBudget: 180000, currentWageSpend: 160000, target: 'リーグ優勝', fanExpectation: '極めて高い（タイトル必須）', stadiumName: 'ヤマハスタジアム', stadiumCapacity: 15165, primaryColor: '#6CABDD', secondaryColor: '#FFFFFF', currentFormation: '4-2-3-1', playerIds: [] },
   { id: 'consadole-sapporo', name: '北海道コンサドーレ札幌', shortName: '札幌', league: 'j2-league', country: '日本', tier: 'Upper', reputation: 75, transferBudget: 6500000, wageBudget: 190000, currentWageSpend: 170000, target: 'リーグ優勝', fanExpectation: '極めて高い（タイトル必須）', stadiumName: '大和ハウス プレミストドーム', stadiumCapacity: 38794, primaryColor: '#E60012', secondaryColor: '#000000', currentFormation: '3-4-2-1', playerIds: [] },
   { id: 'sagan-tosu', name: 'サガン鳥栖', shortName: '鳥栖', league: 'j2-league', country: '日本', tier: 'Upper', reputation: 74, transferBudget: 5500000, wageBudget: 170000, currentWageSpend: 150000, target: '上位進出', fanExpectation: '高い（上位争い）', stadiumName: '駅前不動産スタジアム', stadiumCapacity: 24130, primaryColor: '#009FD7', secondaryColor: '#FF69B4', currentFormation: '4-2-3-1', playerIds: [] },
   { id: 'montedio-yamagata', name: 'モンテディオ山形', shortName: '山形', league: 'j2-league', country: '日本', tier: 'Mid', reputation: 71, transferBudget: 4000000, wageBudget: 130000, currentWageSpend: 110000, target: '上位進出', fanExpectation: '高い（上位争い）', stadiumName: 'NDソフトスタジアム山形', stadiumCapacity: 21292, primaryColor: '#002B7F', secondaryColor: '#FFFFFF', currentFormation: '4-2-3-1', playerIds: [] },
-  { id: 'jef-united-chiba', name: 'ジェフユナイテッド千葉', shortName: '千葉', league: 'j2-league', country: '日本', tier: 'Upper', reputation: 73, transferBudget: 5000000, wageBudget: 160000, currentWageSpend: 140000, target: '上位進出', fanExpectation: '高い（上位争い）', stadiumName: 'フクダ電子アリーナ', stadiumCapacity: 19781, primaryColor: '#FFF100', secondaryColor: '#006432', currentFormation: '4-4-2', playerIds: [] },
   { id: 'vegalta-sendai', name: 'ベガルタ仙台', shortName: '仙台', league: 'j2-league', country: '日本', tier: 'Upper', reputation: 73, transferBudget: 4800000, wageBudget: 150000, currentWageSpend: 130000, target: '上位進出', fanExpectation: '高い（上位争い）', stadiumName: 'ユアテックスタジアム仙台', stadiumCapacity: 19694, primaryColor: '#FFD700', secondaryColor: '#002B7F', currentFormation: '4-4-2', playerIds: [] },
-  { id: 'v-varen-nagasaki', name: 'V・ファーレン長崎', shortName: '長崎', league: 'j2-league', country: '日本', tier: 'Upper', reputation: 74, transferBudget: 6500000, wageBudget: 180000, currentWageSpend: 160000, target: 'リーグ優勝', fanExpectation: '極めて高い（タイトル必須）', stadiumName: 'PEACE STADIUM Connected by SoftBank', stadiumCapacity: 20027, primaryColor: '#002B7F', secondaryColor: '#F37021', currentFormation: '4-2-3-1', playerIds: [] },
   { id: 'blaublitz-akita', name: 'ブラウブリッツ秋田', shortName: '秋田', league: 'j2-league', country: '日本', tier: 'Mid', reputation: 68, transferBudget: 3000000, wageBudget: 95000, currentWageSpend: 82000, target: '中位安定', fanExpectation: '現実的（堅実な戦い）', stadiumName: 'ソユースタジアム', stadiumCapacity: 20125, primaryColor: '#002B7F', secondaryColor: '#FFFFFF', currentFormation: '4-4-2', playerIds: [] },
   { id: 'renofa-yamaguchi', name: 'レノファ山口FC', shortName: '山口', league: 'j2-league', country: '日本', tier: 'Mid', reputation: 68, transferBudget: 3200000, wageBudget: 100000, currentWageSpend: 88000, target: '中位安定', fanExpectation: '現実的（堅実な戦い）', stadiumName: '維新みらいふスタジアム', stadiumCapacity: 15115, primaryColor: '#F37021', secondaryColor: '#FFFFFF', currentFormation: '4-4-2', playerIds: [] },
-  { id: 'mito-hollyhock', name: '水戸ホーリーホック', shortName: '水戸', league: 'j2-league', country: '日本', tier: 'Mid', reputation: 68, transferBudget: 3000000, wageBudget: 98000, currentWageSpend: 85000, target: '中位安定', fanExpectation: '現実的（堅実な戦い）', stadiumName: 'ケーズデンキスタジアム水戸', stadiumCapacity: 12000, primaryColor: '#002B7F', secondaryColor: '#009FD7', currentFormation: '4-4-2', playerIds: [] },
   { id: 'iwaki-fc', name: 'いわきFC', shortName: 'いわき', league: 'j2-league', country: '日本', tier: 'Mid', reputation: 70, transferBudget: 3800000, wageBudget: 110000, currentWageSpend: 95000, target: '上位進出', fanExpectation: '現実的（堅実な戦い）', stadiumName: 'ハワイアンズスタジアムいわき', stadiumCapacity: 5615, primaryColor: '#98002E', secondaryColor: '#002B49', currentFormation: '3-4-2-1', playerIds: [] },
   { id: 'roasso-kumamoto', name: 'ロアッソ熊本', shortName: '熊本', league: 'j2-league', country: '日本', tier: 'Mid', reputation: 69, transferBudget: 3200000, wageBudget: 105000, currentWageSpend: 90000, target: '中位安定', fanExpectation: '現実的（堅実な戦い）', stadiumName: 'えがお健康スタジアム', stadiumCapacity: 32000, primaryColor: '#E60012', secondaryColor: '#FFFFFF', currentFormation: '3-3-3-1', playerIds: [] },
   { id: 'fujieda-myfc', name: '藤枝MYFC', shortName: '藤枝', league: 'j2-league', country: '日本', tier: 'Mid', reputation: 68, transferBudget: 3100000, wageBudget: 100000, currentWageSpend: 86000, target: '中位安定', fanExpectation: '現実的（堅実な戦い）', stadiumName: '藤枝総合運動公園サッカー場', stadiumCapacity: 10056, primaryColor: '#5A1870', secondaryColor: '#FFFFFF', currentFormation: '3-4-2-1', playerIds: [] },
@@ -629,14 +629,17 @@ import { AUTHENTIC_J1_PLAYERS_PART3 } from './j1PlayersData3';
 import { AUTHENTIC_J1_PLAYERS_PART4 } from './j1PlayersData4';
 import { AUTHENTIC_J1_PLAYERS_PART5 } from './j1PlayersData5';
 import { AUTHENTIC_J1_PLAYERS_PART6 } from './j1PlayersData6';
+import { J1_EXPANSION_AND_J2_PLAYERS } from './jLeagueFullRosters';
 
 export const ALL_AUTHENTIC_J1_PLAYERS: RawJPlayer[] = [
+  ...AUTHENTIC_J_PLAYERS,
   ...AUTHENTIC_J1_PLAYERS,
   ...AUTHENTIC_J1_PLAYERS_PART2,
   ...AUTHENTIC_J1_PLAYERS_PART3,
   ...AUTHENTIC_J1_PLAYERS_PART4,
   ...AUTHENTIC_J1_PLAYERS_PART5,
-  ...AUTHENTIC_J1_PLAYERS_PART6
+  ...AUTHENTIC_J1_PLAYERS_PART6,
+  ...J1_EXPANSION_AND_J2_PLAYERS
 ];
 
 // Helper to expand squad rosters for all 20 J1 clubs (pure authentic, zero fake players)

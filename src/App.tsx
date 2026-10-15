@@ -380,6 +380,7 @@ export default function App() {
       <ClubOfferModal 
         manager={gameState.manager} 
         offers={offers} 
+        players={gameState.players}
         onSelectClub={handleClubSelected}
         onBackToManagerCreation={() => {
           clearGameState();

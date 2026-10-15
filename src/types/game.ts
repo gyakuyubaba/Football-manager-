@@ -181,10 +181,15 @@ export interface Player {
 
 export type LeagueKey = 
   | 'premier-league'
+  | 'championship'
   | 'laliga'
+  | 'segunda-division'
   | 'bundesliga'
+  | '2-bundesliga'
   | 'serie-a'
+  | 'serie-b'
   | 'ligue-1'
+  | 'ligue-2'
   | 'j1-league'
   | 'j2-league'
   | 'j3-league';
@@ -208,13 +213,14 @@ export interface Club {
   name: string;
   shortName: string;
   league: LeagueKey;
+  division?: 1 | 2;
   country: string;
   tier: 'Elite' | 'Upper' | 'Mid' | 'Lower';
   reputation: number; // 1-100
   transferBudget: number; // €
   wageBudget: number; // € / week
   currentWageSpend: number; // € / week
-  target: 'リーグ優勝' | 'チャンピオンズリーグ出場圏' | '欧州大会圏内' | '上位進出' | '中位安定' | 'リーグ残留' | 'カップ戦タイトル';
+  target: 'リーグ優勝' | 'チャンピオンズリーグ出場圏' | '欧州大会圏内' | '上位進出' | '中位安定' | 'リーグ残留' | 'カップ戦タイトル' | '1部昇格' | '昇格プレーオフ進出';
   fanExpectation: '極めて高い（タイトル必須）' | '高い（上位争い）' | '現実的（堅実な戦い）' | '残留最優先';
   stadiumName: string;
   stadiumCapacity: number;
