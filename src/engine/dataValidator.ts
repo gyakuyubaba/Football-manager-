@@ -1,4 +1,6 @@
 import { Player, Club, GameWorldState, StandingsRow, MatchFixture, TeamTactics, YouthProspect, Position, PlayStyle, PlayerPersonality } from '../types/game';
+import { deriveRealisticAltPositions } from '../data/playerPositionsHelper';
+import { generateSingleRandomYouthProspect, generateRandomYouthAcademy } from '../data/youthGenerator';
 
 export interface IntegrityCheckResult {
   isValid: boolean;
@@ -320,11 +322,16 @@ export function checkPlayerDataIntegrity(
     const targetClubId = player.clubId || 'arsenal';
     const validClubId = clubs[targetClubId] ? targetClubId : 'arsenal';
 
+    const resolvedAltPositions = (player.altPositions && player.altPositions.length > 0)
+      ? player.altPositions
+      : deriveRealisticAltPositions(player.position, player.preferredFoot, player.playstyle, player.name);
+
     const normalizedPlayer: Player = {
       ...player,
       id: assignedId,
       clubId: validClubId,
       currentClubId: validClubId,
+      altPositions: resolvedAltPositions,
       squadStatus: player.squadStatus || 'OUT_OF_SQUAD',
       injuryStatus: (player.injury?.isInjured || player.injuryStatus === 'INJURED') ? 'INJURED' : 'HEALTHY'
     };
@@ -643,69 +650,20 @@ export function executePlayerReplacement(
 // -------------------------------------------------------------
 // 【8. ユースアカデミー最低5名確保・ランダム生成・特級逸材】
 // -------------------------------------------------------------
-const YOUTH_FIRST_NAMES_JA = ['悠真', '蓮', '蒼', '陽翔', '湊', '大翔', '樹', '颯太', '陸', '陽向', '朝陽', '結翔', '瑛太', '律', '晴'];
-const YOUTH_LAST_NAMES_JA = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '渡辺', '山本', '中村', '小林', '加藤', '吉田', '山田', '松本', '井上', '木村'];
-const YOUTH_FIRST_NAMES_GLOBAL = ['Leo', 'Lucas', 'Oliver', 'Arthur', 'Mateo', 'Liam', 'Noah', 'Felix', 'Gabriel', 'Julian', 'Marco', 'Hugo'];
-const YOUTH_LAST_NAMES_GLOBAL = ['Silva', 'Santos', 'Müller', 'Schmidt', 'Dubois', 'Martin', 'Rossi', 'Ferrari', 'García', 'Fernández', 'Davies', 'Smith'];
-
-export function generateSingleYouthProspect(idSuffix?: string | number): YouthProspect {
-  const isJapanese = Math.random() < 0.5;
-  const firstName = isJapanese 
-    ? YOUTH_FIRST_NAMES_JA[Math.floor(Math.random() * YOUTH_FIRST_NAMES_JA.length)]
-    : YOUTH_FIRST_NAMES_GLOBAL[Math.floor(Math.random() * YOUTH_FIRST_NAMES_GLOBAL.length)];
-  const lastName = isJapanese
-    ? YOUTH_LAST_NAMES_JA[Math.floor(Math.random() * YOUTH_LAST_NAMES_JA.length)]
-    : YOUTH_LAST_NAMES_GLOBAL[Math.floor(Math.random() * YOUTH_LAST_NAMES_GLOBAL.length)];
-  const name = isJapanese ? `${lastName} ${firstName}` : `${firstName} ${lastName}`;
-  const nationality = isJapanese ? '日本' : ['イングランド', 'スペイン', 'フランス', 'ドイツ', 'ブラジル'][Math.floor(Math.random() * 5)];
-
-  const positions: Position[] = ['GK', 'CB', 'LB', 'RB', 'CDM', 'CM', 'CAM', 'LW', 'RW', 'ST', 'CF'];
-  const position = positions[Math.floor(Math.random() * positions.length)];
-  const age = 15 + Math.floor(Math.random() * 4); // 15 - 18
-
-  // OVR: mostly developing (62-72), rare wonderkid (>= 80 ~ 4% chance) (Requirement 8)
-  const isSuperWonderkid = Math.random() < 0.04;
-  const ovr = isSuperWonderkid 
-    ? 80 + Math.floor(Math.random() * 3) 
-    : 62 + Math.floor(Math.random() * 11);
-  const potential = isSuperWonderkid ? Math.min(95, ovr + 10 + Math.floor(Math.random() * 5)) : Math.min(92, ovr + 12 + Math.floor(Math.random() * 12));
-
-  const playstyles: PlayStyle[] = [
-    'チャンスメイカー', '俊足ドリブラー', 'スピードスター', 'ゴールゲッター',
-    'ボックストゥボックス', 'アンカー', 'ボール運べるCB', 'ショットストッパー'
-  ];
-  const personalities: PlayerPersonality[] = [
-    'プロフェッショナル', '野心的', '冷静沈着', '努力家', 'リーダー気質'
-  ];
-
-  const scoutReport = isSuperWonderkid
-    ? `【世代屈指の特級逸材】若年ながら既に完成された卓越した技術とビジョンを兼ね備える。将来の世界的スター候補。`
-    : `基礎技術と成長意欲に優れた${position}の原石。出場機会と的確なトレーニングで大幅な成長が見込める。`;
-
-  return {
-    id: `youth_${Date.now()}_${idSuffix ?? Math.floor(Math.random() * 10000)}`,
-    name,
-    age,
-    nationality,
-    position,
-    ovr,
-    potential,
-    playstyle: playstyles[Math.floor(Math.random() * playstyles.length)],
-    personality: personalities[Math.floor(Math.random() * personalities.length)],
-    scoutReport,
-    promoted: false
-  };
+export function generateSingleYouthProspect(idSuffix?: string | number, clubCountry: string = '日本'): YouthProspect {
+  return generateSingleRandomYouthProspect(idSuffix ?? 1, clubCountry);
 }
 
-export function ensureYouthAcademyProspects(currentAcademy?: YouthProspect[]): YouthProspect[] {
+export function ensureYouthAcademyProspects(currentAcademy?: YouthProspect[], clubCountry: string = '日本'): YouthProspect[] {
   let list = Array.isArray(currentAcademy) ? [...currentAcademy] : [];
   const activeCount = list.filter(p => !p.promoted).length;
-  if (activeCount < 5) {
-    const needed = 5 - activeCount;
+  if (activeCount < 6) {
+    const needed = 6 - activeCount;
     for (let i = 0; i < needed; i++) {
-      list.push(generateSingleYouthProspect(i + 1));
+      list.push(generateSingleRandomYouthProspect(i + 1, clubCountry));
     }
   }
   return list;
 }
+
 

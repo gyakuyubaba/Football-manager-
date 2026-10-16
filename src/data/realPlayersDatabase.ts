@@ -1,4 +1,5 @@
 import { Player, Position, PlayStyle, PlayerPersonality, PlayerCondition } from '../types/game';
+import { deriveRealisticAltPositions } from './playerPositionsHelper';
 
 // Helper to construct fully structured real players
 export function makeRealPlayer(
@@ -37,6 +38,11 @@ export function makeRealPlayer(
     if (Array.isArray(param15)) {
       resolvedAltPositions = param15;
     }
+  }
+
+  // If no alternative positions provided, procedurally derive realistic ones
+  if (resolvedAltPositions.length === 0) {
+    resolvedAltPositions = deriveRealisticAltPositions(position, preferredFoot, playstyle, name);
   }
 
   // Derive realistic attributes from OVR and position

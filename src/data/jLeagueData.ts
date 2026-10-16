@@ -1,4 +1,5 @@
 import { Club, Player } from '../types/game';
+import { deriveRealisticAltPositions } from './playerPositionsHelper';
 
 // ==========================================
 // 2025 J.LEAGUE OFFICIAL 60 CLUBS (J1, J2, J3)
@@ -661,7 +662,7 @@ export function generateFullJLeaguePlayers(existingPlayers: Record<string, Playe
       birthDate,
       nationality: raw.nationality,
       position: raw.position,
-      altPositions: [],
+      altPositions: deriveRealisticAltPositions(raw.position, raw.preferredFoot, undefined, raw.name),
       preferredFoot: raw.preferredFoot,
       ovr: raw.ovr,
       exactOvr: raw.ovr,
