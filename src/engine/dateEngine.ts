@@ -3,6 +3,7 @@ import { ENABLE_J_LEAGUE } from '../data/clubsData';
 import { simulateFullMatch, calculatePlayerInjuryRisk, INJURY_VARIETIES, getRandomWeightedInjury } from './matchEngine';
 import { simulateAITransfers } from './transferEngine';
 import { getDefaultTacticsForClub } from '../data/squadPopulator';
+import { generateSeasonFixtures } from './fixtureGenerator';
 
 // Format ISO date to display string YYYY年M月D日
 export function formatDateJP(dateStr: string): string {
@@ -467,65 +468,197 @@ export function advanceOneDay(
 }
 
 // -------------------------------------------------------------
-// 【7. Jリーグ昇降格システム (SEASON END PROMOTION & RELEGATION)】
+// 【7. 欧州5大国＆日本 全6リーグ 昇降格システム (SEASON END PROMOTION & RELEGATION)】
 // -------------------------------------------------------------
 export function processSeasonEndPromotionsAndRelegations(state: GameWorldState): { state: GameWorldState; news: NewsItem } {
-  if (!ENABLE_J_LEAGUE) {
-    return {
-      state,
-      news: {
-        id: `news_season_end_${Date.now()}`,
-        date: state.currentDate,
-        headline: '【欧州シーズン終了】各リーグ順位および欧州大会出場権確定',
-        body: '2026/27シーズン全日程が終了し、リーグタイトルおよび欧州大会出場権が確定しました。',
-        category: 'tournament',
-        importance: 'high'
-      }
-    };
-  }
   const clubs = { ...state.clubs };
-  const j1Rows = state.standings['j1-league'] || [];
-  const j2Rows = state.standings['j2-league'] || [];
-  const j3Rows = state.standings['j3-league'] || [];
+  const standings = state.standings;
 
-  // J1 bottom 3 relegated to J2
-  const j1Relegated = j1Rows.length >= 20 ? j1Rows.slice(-3).map(r => r.clubId) : [];
-  // J2 top 3 promoted to J1
-  const j2Promoted = j2Rows.length >= 20 ? j2Rows.slice(0, 3).map(r => r.clubId) : [];
+  const getStandings = (k: LeagueKey) => standings[k] || [];
+  const nameOf = (id: string) => clubs[id]?.name || id;
 
-  // J2 bottom 3 relegated to J3
-  const j2Relegated = j2Rows.length >= 20 ? j2Rows.slice(-3).map(r => r.clubId) : [];
-  // J3 top 3 promoted to J2
-  const j3Promoted = j3Rows.length >= 20 ? j3Rows.slice(0, 3).map(r => r.clubId) : [];
+  // 1. ENGLAND: Premier League (20) ⇄ Championship (24)
+  const plRows = getStandings('premier-league');
+  const plRelegated = plRows.length >= 20 ? plRows.slice(-3).map(r => r.clubId) : (plRows.length >= 3 ? plRows.slice(-3).map(r => r.clubId) : []);
+  const champRows = getStandings('championship');
+  const champDirectPromoted = champRows.length >= 2 ? champRows.slice(0, 2).map(r => r.clubId) : [];
+  const champPlayoffPool = champRows.length >= 6 ? champRows.slice(2, 6) : [];
+  const champPlayoffWinner = champPlayoffPool.length > 0 ? champPlayoffPool[0].clubId : (champRows[2]?.clubId || '');
+  const champPromoted = [...champDirectPromoted, ...(champPlayoffWinner ? [champPlayoffWinner] : [])];
 
-  j1Relegated.forEach(id => {
-    if (clubs[id]) clubs[id].league = 'j2-league';
-  });
-  j2Promoted.forEach(id => {
-    if (clubs[id]) clubs[id].league = 'j1-league';
-  });
-  j2Relegated.forEach(id => {
-    if (clubs[id]) clubs[id].league = 'j3-league';
-  });
-  j3Promoted.forEach(id => {
-    if (clubs[id]) clubs[id].league = 'j2-league';
-  });
+  // 2. SPAIN: La Liga (20) ⇄ Segunda División (22)
+  const llRows = getStandings('laliga');
+  const llRelegated = llRows.length >= 20 ? llRows.slice(-3).map(r => r.clubId) : (llRows.length >= 3 ? llRows.slice(-3).map(r => r.clubId) : []);
+  const segRows = getStandings('segunda-division');
+  const segDirectPromoted = segRows.length >= 2 ? segRows.slice(0, 2).map(r => r.clubId) : [];
+  const segPlayoffPool = segRows.length >= 6 ? segRows.slice(2, 6) : [];
+  const segPlayoffWinner = segPlayoffPool.length > 0 ? segPlayoffPool[0].clubId : (segRows[2]?.clubId || '');
+  const segPromoted = [...segDirectPromoted, ...(segPlayoffWinner ? [segPlayoffWinner] : [])];
 
-  const news: NewsItem = {
-    id: `news_j_prom_rel_${Date.now()}`,
+  // 3. GERMANY: Bundesliga (18) ⇄ 2. Bundesliga (18)
+  const blRows = getStandings('bundesliga');
+  const blDirectRelegated = blRows.length >= 18 ? blRows.slice(-2).map(r => r.clubId) : (blRows.length >= 2 ? blRows.slice(-2).map(r => r.clubId) : []);
+  const blPlayoffClubId = blRows.length >= 16 ? blRows[15]?.clubId : ''; // 16th place Relegation Playoff
+  const bl2Rows = getStandings('2-bundesliga');
+  const bl2DirectPromoted = bl2Rows.length >= 2 ? bl2Rows.slice(0, 2).map(r => r.clubId) : [];
+  const bl2PlayoffClubId = bl2Rows.length >= 3 ? bl2Rows[2]?.clubId : ''; // 3rd place Promotion Playoff
+  const blPlayoffWinnerIs2ndDiv = Math.random() < 0.45;
+  const blRelegated = [...blDirectRelegated];
+  const bl2Promoted = [...bl2DirectPromoted];
+  if (blPlayoffClubId && bl2PlayoffClubId) {
+    if (blPlayoffWinnerIs2ndDiv) {
+      blRelegated.push(blPlayoffClubId);
+      bl2Promoted.push(bl2PlayoffClubId);
+    }
+  }
+
+  // 4. ITALY: Serie A (20) ⇄ Serie B (20)
+  const saRows = getStandings('serie-a');
+  const saRelegated = saRows.length >= 20 ? saRows.slice(-3).map(r => r.clubId) : (saRows.length >= 3 ? saRows.slice(-3).map(r => r.clubId) : []);
+  const sbRows = getStandings('serie-b');
+  const sbDirectPromoted = sbRows.length >= 2 ? sbRows.slice(0, 2).map(r => r.clubId) : [];
+  const sbPlayoffWinner = sbRows.length >= 3 ? sbRows[2]?.clubId : '';
+  const sbPromoted = [...sbDirectPromoted, ...(sbPlayoffWinner ? [sbPlayoffWinner] : [])];
+
+  // 5. FRANCE: Ligue 1 (18) ⇄ Ligue 2 (18)
+  const l1Rows = getStandings('ligue-1');
+  const l1DirectRelegated = l1Rows.length >= 18 ? l1Rows.slice(-2).map(r => r.clubId) : (l1Rows.length >= 2 ? l1Rows.slice(-2).map(r => r.clubId) : []);
+  const l1PlayoffClubId = l1Rows.length >= 16 ? l1Rows[15]?.clubId : ''; // 16th place Barrages
+  const l2Rows = getStandings('ligue-2');
+  const l2DirectPromoted = l2Rows.length >= 2 ? l2Rows.slice(0, 2).map(r => r.clubId) : [];
+  const l2PlayoffClubId = l2Rows.length >= 3 ? l2Rows[2]?.clubId : ''; // 3rd place Barrages
+  const l1BarrageWinnerIsL2 = Math.random() < 0.45;
+  const l1Relegated = [...l1DirectRelegated];
+  const l2Promoted = [...l2DirectPromoted];
+  if (l1PlayoffClubId && l2PlayoffClubId) {
+    if (l1BarrageWinnerIsL2) {
+      l1Relegated.push(l1PlayoffClubId);
+      l2Promoted.push(l2PlayoffClubId);
+    }
+  }
+
+  // 6. JAPAN: J1 League (20) ⇄ J2 League (20)
+  const j1Rows = getStandings('j1-league');
+  const j1Relegated = j1Rows.length >= 20 ? j1Rows.slice(-3).map(r => r.clubId) : (j1Rows.length >= 3 ? j1Rows.slice(-3).map(r => r.clubId) : []);
+  const j2Rows = getStandings('j2-league');
+  const j2DirectPromoted = j2Rows.length >= 2 ? j2Rows.slice(0, 2).map(r => r.clubId) : [];
+  const j2PlayoffWinner = j2Rows.length >= 3 ? j2Rows[2]?.clubId : '';
+  const j2Promoted = [...j2DirectPromoted, ...(j2PlayoffWinner ? [j2PlayoffWinner] : [])];
+
+  // Swap league divisions
+  plRelegated.forEach(id => { if (clubs[id]) clubs[id].league = 'championship'; });
+  champPromoted.forEach(id => { if (clubs[id]) clubs[id].league = 'premier-league'; });
+
+  llRelegated.forEach(id => { if (clubs[id]) clubs[id].league = 'segunda-division'; });
+  segPromoted.forEach(id => { if (clubs[id]) clubs[id].league = 'laliga'; });
+
+  blRelegated.forEach(id => { if (clubs[id]) clubs[id].league = '2-bundesliga'; });
+  bl2Promoted.forEach(id => { if (clubs[id]) clubs[id].league = 'bundesliga'; });
+
+  saRelegated.forEach(id => { if (clubs[id]) clubs[id].league = 'serie-b'; });
+  sbPromoted.forEach(id => { if (clubs[id]) clubs[id].league = 'serie-a'; });
+
+  l1Relegated.forEach(id => { if (clubs[id]) clubs[id].league = 'ligue-2'; });
+  l2Promoted.forEach(id => { if (clubs[id]) clubs[id].league = 'ligue-1'; });
+
+  j1Relegated.forEach(id => { if (clubs[id]) clubs[id].league = 'j2-league'; });
+  j2Promoted.forEach(id => { if (clubs[id]) clubs[id].league = 'j1-league'; });
+
+  // Handle User Club Promotion / Relegation effects
+  let userClubNewsHeadline = '';
+  let userClubNewsBody = '';
+  if (state.userClubId) {
+    const userClub = clubs[state.userClubId];
+    const isPromoted = champPromoted.includes(state.userClubId) ||
+      segPromoted.includes(state.userClubId) ||
+      bl2Promoted.includes(state.userClubId) ||
+      sbPromoted.includes(state.userClubId) ||
+      l2Promoted.includes(state.userClubId) ||
+      j2Promoted.includes(state.userClubId);
+
+    const isRelegated = plRelegated.includes(state.userClubId) ||
+      llRelegated.includes(state.userClubId) ||
+      blRelegated.includes(state.userClubId) ||
+      saRelegated.includes(state.userClubId) ||
+      l1Relegated.includes(state.userClubId) ||
+      j1Relegated.includes(state.userClubId);
+
+    if (isPromoted) {
+      userClub.transferBudget = Math.round(userClub.transferBudget * 1.35);
+      userClub.wageBudget = Math.round(userClub.wageBudget * 1.25);
+      userClub.target = 'リーグ残留';
+      userClubNewsHeadline = `【歓喜の1部昇格達成！】${userClub.name}、${state.manager.name}監督の下でトップリーグ昇格決定！`;
+      userClubNewsBody = `激闘のシーズンを戦い抜いた${userClub.name}が、見事にトップディビジョンへの昇格を果たしました！取締役会は${state.manager.name}監督の手腕を絶賛し、来季の補強予算を大幅に増額（35%UP）することを決定。サポーターの歓喜の声が街中に響き渡っています。`;
+    } else if (isRelegated) {
+      userClub.target = '1部昇格';
+      userClubNewsHeadline = `【悔しき2部降格】${userClub.name}、来季は2部ディビジョンからの再起を誓う`;
+      userClubNewsBody = `残留争いの末、${userClub.name}の2部降格が決定しました。取締役会は失望を隠せないものの、${state.manager.name}監督に対して「1年でのトップリーグ復帰」を厳命。チームの刷新と即時昇格に向けた再構築が始まります。`;
+    }
+  }
+
+  // Summary news across all 6 countries
+  const summaryBody = [
+    '【2026/27シーズン公式昇格・降格結果発表（全6大リーグ）】',
+    `■ イングランド (プレミアリーグ ⇄ チャンピオンシップ)`,
+    `  ・昇格: ${champPromoted.map(nameOf).join('、') || '該当クラブ'}`,
+    `  ・降格: ${plRelegated.map(nameOf).join('、') || '該当クラブ'}`,
+    `■ スペイン (ラ・リーガ ⇄ セグンダ)`,
+    `  ・昇格: ${segPromoted.map(nameOf).join('、') || '該当クラブ'}`,
+    `  ・降格: ${llRelegated.map(nameOf).join('、') || '該当クラブ'}`,
+    `■ ドイツ (ブンデスリーガ ⇄ 2.ブンデスリーガ)`,
+    `  ・昇格: ${bl2Promoted.map(nameOf).join('、') || '該当クラブ'}`,
+    `  ・降格: ${blRelegated.map(nameOf).join('、') || '該当クラブ'}`,
+    `■ イタリア (セリエA ⇄ セリエB)`,
+    `  ・昇格: ${sbPromoted.map(nameOf).join('、') || '該当クラブ'}`,
+    `  ・降格: ${saRelegated.map(nameOf).join('、') || '該当クラブ'}`,
+    `■ フランス (リーグ・アン ⇄ リーグ・ドゥ)`,
+    `  ・昇格: ${l2Promoted.map(nameOf).join('、') || '該当クラブ'}`,
+    `  ・降格: ${l1Relegated.map(nameOf).join('、') || '該当クラブ'}`,
+    `■ 日本 (明治安田J1 ⇄ J2)`,
+    `  ・昇格: ${j2Promoted.map(nameOf).join('、') || '該当クラブ'}`,
+    `  ・降格: ${j1Relegated.map(nameOf).join('、') || '該当クラブ'}`
+  ].join('\n');
+
+  const mainNews: NewsItem = {
+    id: `news_prom_rel_${Date.now()}`,
     date: state.currentDate,
-    headline: '【Jリーグ昇降格決定】シーズン終了に伴うJ1⇄J2、J2⇄J3の入れ替えが決定！',
-    body: `シーズン終了に伴い昇格・降格クラブが確定しました。\n・J1昇格: ${j2Promoted.map(id => clubs[id]?.name).join('、') || '該当クラブ'}\n・J2降格: ${j1Relegated.map(id => clubs[id]?.name).join('、') || '該当クラブ'}\n・J2昇格: ${j3Promoted.map(id => clubs[id]?.name).join('、') || '該当クラブ'}\n・J3降格: ${j2Relegated.map(id => clubs[id]?.name).join('、') || '該当クラブ'}`,
+    headline: userClubNewsHeadline || '【欧州・Jリーグ公式】シーズン終了に伴う6大リーグ全昇格・降格クラブ決定！',
+    body: userClubNewsBody ? `${userClubNewsBody}\n\n${summaryBody}` : summaryBody,
     category: 'tournament',
     importance: 'high'
   };
 
+  // Reset standings for all 12 leagues for the next season
+  const updatedStandings = { ...standings };
+  (Object.keys(updatedStandings) as LeagueKey[]).forEach(k => {
+    const lgClubs = Object.values(clubs).filter(c => c.league === k);
+    updatedStandings[k] = lgClubs.map(c => ({
+      clubId: c.id,
+      clubName: c.name,
+      played: 0,
+      won: 0,
+      drawn: 0,
+      lost: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      goalDiff: 0,
+      points: 0,
+      form: []
+    }));
+  });
+
+  // Regenerate season fixtures for the next season with updated league memberships
+  const nextFixtures = generateSeasonFixtures(clubs, state.userClubId);
+
   return {
     state: {
       ...state,
-      clubs
+      season: '2027/28',
+      clubs,
+      standings: updatedStandings,
+      fixtures: nextFixtures
     },
-    news
+    news: mainNews
   };
 }
 

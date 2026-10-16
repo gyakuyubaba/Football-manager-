@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Club, ManagerProfile, LeagueKey, Player } from '../types/game';
 import { ALL_CLUBS } from '../data/clubsData';
 import { J2_20_CLUBS } from '../data/jLeagueData';
+import { ALL_EUROPEAN_2ND_DIVISION_CLUBS } from '../data/europeanSecondDivisionClubs';
 import { buildCompletePlayersRegistry } from '../data/squadPopulator';
 import { 
   Trophy, 
@@ -27,16 +28,25 @@ interface Props {
   onBackToManagerCreation?: () => void;
 }
 
-const ALL_SELECTABLE_CLUBS: Club[] = [...ALL_CLUBS, ...J2_20_CLUBS];
+const ALL_SELECTABLE_CLUBS: Club[] = [
+  ...ALL_CLUBS,
+  ...J2_20_CLUBS,
+  ...ALL_EUROPEAN_2ND_DIVISION_CLUBS
+];
 
 const LEAGUES: { id: LeagueKey; name: string; flag: string; count: number }[] = [
   { id: 'j1-league', name: 'J1百年構想リーグ', flag: '🇯🇵', count: 20 },
   { id: 'j2-league', name: 'J2リーグ', flag: '🇯🇵', count: 20 },
   { id: 'premier-league', name: 'プレミアリーグ', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', count: 20 },
+  { id: 'championship', name: 'EFLチャンピオンシップ', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', count: 24 },
   { id: 'laliga', name: 'ラ・リーガ', flag: '🇪🇸', count: 20 },
+  { id: 'segunda-division', name: 'セグンダ・ディビシオン', flag: '🇪🇸', count: 22 },
   { id: 'bundesliga', name: 'ブンデスリーガ', flag: '🇩🇪', count: 18 },
+  { id: '2-bundesliga', name: '2.ブンデスリーガ', flag: '🇩🇪', count: 18 },
   { id: 'serie-a', name: 'セリエA', flag: '🇮🇹', count: 20 },
-  { id: 'ligue-1', name: 'リーグ・アン', flag: '🇫🇷', count: 18 }
+  { id: 'serie-b', name: 'セリエB', flag: '🇮🇹', count: 20 },
+  { id: 'ligue-1', name: 'リーグ・アン', flag: '🇫🇷', count: 18 },
+  { id: 'ligue-2', name: 'リーグ・ドゥ', flag: '🇫🇷', count: 18 }
 ];
 
 export const ClubOfferModal: React.FC<Props> = ({ manager, offers, players, onSelectClub, onBackToManagerCreation }) => {

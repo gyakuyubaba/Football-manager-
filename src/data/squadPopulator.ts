@@ -4,7 +4,10 @@ import { CURATED_REAL_SQUADS } from './squadsCatalog';
 import { ADDITIONAL_CLUB_SEEDS } from './allClubsSquads';
 import { makeRealPlayer } from './realPlayersDatabase';
 import { checkPlayerDataIntegrity } from '../engine/dataValidator';
+import { updateTacticsFormation } from '../engine/tacticsEngine';
 import { generateFullJLeaguePlayers, J2_20_CLUBS } from './jLeagueData';
+import { ALL_EUROPEAN_2ND_DIVISION_CLUBS } from './europeanSecondDivisionClubs';
+import { MUST_CHECK_AND_OVERSEAS_SEEDS } from './europeanSecondDivisionPlayers';
 
 // Standard 25 squad positions template (3 GKs, 4 CBs, 2 LBs, 2 RBs, 2 CDMs, 2 CMs, 2 CAMs, 1 LM, 1 RM, 1 LW, 1 RW, 3 STs, 1 CF)
 const SQUAD_POSITIONS_TEMPLATE: Position[] = [
@@ -211,16 +214,91 @@ export function buildCompletePlayersRegistry(): Record<string, Player> {
     });
   });
 
+  // 2b. Register must-check stars and European 2nd division authentic seeds
+  Object.entries(MUST_CHECK_AND_OVERSEAS_SEEDS).forEach(([clubId, seeds]) => {
+    seeds.forEach((seed, idx) => {
+      const pId = seed.name.includes('佐野')
+        ? 'mainz_kaishu_sano'
+        : seed.name.includes('鈴木 彩艶')
+        ? 'parma_zion_suzuki'
+        : seed.name.includes('Doué')
+        ? 'psg_desire_doue'
+        : seed.name.includes('Gyökeres')
+        ? 'arsenal_viktor_gyokeres'
+        : seed.name.includes('Semenyo')
+        ? 'bournemouth_antoine_semenyo'
+        : seed.name.includes('Pedro')
+        ? 'brighton_joao_pedro'
+        : seed.name.includes('Cherki')
+        ? 'lyon_rayan_cherki'
+        : seed.name.includes('三笘')
+        ? 'brighton_kaoru_mitoma'
+        : seed.name.includes('久保')
+        ? 'sociedad_takefusa_kubo'
+        : seed.name.includes('遠藤')
+        ? 'liverpool_wataru_endo'
+        : seed.name.includes('冨安')
+        ? 'arsenal_takehiro_tomiyasu'
+        : seed.name.includes('南野')
+        ? 'monaco_takumi_minamino'
+        : seed.name.includes('堂安')
+        ? 'freiburg_ritsu_doan'
+        : seed.name.includes('伊東')
+        ? 'reims_junya_ito'
+        : seed.name.includes('中村')
+        ? 'reims_keito_nakamura'
+        : seed.name.includes('菅原')
+        ? 'southampton_yukinari_sugawara'
+        : seed.name.includes('板倉')
+        ? 'gladbach_ko_itakura'
+        : `${clubId}_seed_${idx + 1}_${seed.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}`;
+
+      const tierMultiplier = seed.ovr >= 85 ? 65000000 : seed.ovr >= 80 ? 30000000 : seed.ovr >= 75 ? 12000000 : 3500000;
+      const wageMultiplier = seed.ovr >= 85 ? 200000 : seed.ovr >= 80 ? 100000 : seed.ovr >= 75 ? 40000 : 15000;
+
+      const player = makeRealPlayer(
+        pId,
+        seed.name,
+        clubId,
+        seed.position,
+        seed.age,
+        seed.nationality,
+        seed.ovr,
+        seed.ovr + (seed.age <= 22 ? 6 : seed.age <= 26 ? 3 : 0),
+        tierMultiplier,
+        wageMultiplier,
+        seed.shirtNumber,
+        seed.preferredFoot || '右',
+        seed.playstyle || (seed.position === 'GK' ? 'ショットストッパー' : 'チャンスメイカー')
+      );
+
+      // Specific fine-tuning for Zion Suzuki
+      if (seed.name.includes('鈴木 彩艶')) {
+        player.name = '鈴木 彩艶 (Zion Suzuki)';
+        player.passing = 76;
+        player.gk = 79;
+        player.physical = 83;
+        player.pace = 68;
+        player.potential = 86;
+        player.exactOvr = 78.0;
+        player.playstyle = 'ビルドアップ型GK';
+      }
+
+      addPlayerIfUnique(player);
+    });
+  });
+
   // 3. First load all authentic J-League players (J1 and J2 authentic rosters)
   let baseRegistry = registry;
   if (ENABLE_J_LEAGUE) {
     baseRegistry = generateFullJLeaguePlayers(baseRegistry);
   }
 
-  // 4. Ensure all clubs (all 96 European clubs + all 20 J1 clubs + all 20 J2 clubs) have at least 25 players across positions
+  // 4. Ensure all clubs (all 96 European clubs + all 20 J1 clubs + all 20 J2 clubs + 102 European 2nd division clubs) have at least 25 players across positions
   const allClubsToEnsure: Club[] = [
     ...ALL_CLUBS,
-    ...(ENABLE_J_LEAGUE ? J2_20_CLUBS : [])
+    ...(ENABLE_J_LEAGUE ? J2_20_CLUBS : []),
+    ...ALL_EUROPEAN_2ND_DIVISION_CLUBS
   ];
 
   // Deduplicate clubs by id
@@ -400,8 +478,8 @@ export function getDefaultTacticsForClub(club: Club, players: Record<string, Pla
   const bench = remaining.slice(0, 9).map(p => p.id); // Strict 9 max bench players
   const reserves = remaining.slice(9).map(p => p.id);
 
-  return {
-    formation: club.currentFormation || '4-3-3',
+  const baseTactics: TeamTactics = {
+    formation: '4-3-3',
     lineup: {
       starters,
       bench,
@@ -422,4 +500,10 @@ export function getDefaultTacticsForClub(club: Club, players: Record<string, Pla
       cornerTakerId: starters[8]?.playerId
     }
   };
+
+  if (club.currentFormation && club.currentFormation !== '4-3-3') {
+    return updateTacticsFormation(baseTactics, club.currentFormation, players);
+  }
+
+  return baseTactics;
 }

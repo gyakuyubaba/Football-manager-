@@ -578,21 +578,169 @@ export function getPositionFitOvr(player: Player, targetPosition: Position): {
   return { effectiveOvr: Math.max(35, player.ovr - penalty), penalty, fitGrade: 'D', fitSymbol: '✕', description: '著しい不適性・大幅減衰' };
 }
 
-// Generate updated tactics when changing formation
-export function updateTacticsFormation(currentTactics: TeamTactics, newFormation: FormationName): TeamTactics {
+// Generate updated tactics when changing formation with intelligent slot matching
+export function updateTacticsFormation(
+  currentTactics: TeamTactics, 
+  newFormation: FormationName,
+  playersMap?: Record<string, Player>
+): TeamTactics {
   const template = FORMATION_TEMPLATES[newFormation];
-  if (!template) return currentTactics;
+  if (!template || template.length !== 11) return currentTactics;
 
-  const currentStarters = [...currentTactics.lineup.starters];
-  const newStarters = template.map((slot, index) => {
-    const existingPlayer = currentStarters[index];
+  const currentStarters = [...(currentTactics.lineup?.starters || [])];
+  
+  // If no starters exist, return template with empty playerIds
+  if (currentStarters.length === 0) {
     return {
-      playerId: existingPlayer?.playerId || '',
-      position: slot.position,
-      pitchX: slot.pitchX,
-      pitchY: slot.pitchY
+      ...currentTactics,
+      formation: newFormation,
+      lineup: {
+        ...currentTactics.lineup,
+        starters: template.map(slot => ({
+          playerId: '',
+          position: slot.position,
+          pitchX: slot.pitchX,
+          pitchY: slot.pitchY
+        }))
+      }
     };
+  }
+
+  // Helper to categorize position
+  const getLine = (pos: Position) => {
+    if (pos === 'GK') return 'GK';
+    if (['CB', 'LB', 'RB', 'LWB', 'RWB'].includes(pos)) return 'DF';
+    if (['CDM', 'CM', 'CAM', 'LM', 'RM'].includes(pos)) return 'MF';
+    return 'FW';
+  };
+
+  const getSide = (x: number) => {
+    if (x < 42) return 'L';
+    if (x > 58) return 'R';
+    return 'C';
+  };
+
+  const getSideFromPos = (pos: Position) => {
+    if (['LB', 'LWB', 'LM', 'LW'].includes(pos)) return 'L';
+    if (['RB', 'RWB', 'RM', 'RW'].includes(pos)) return 'R';
+    return 'C';
+  };
+
+  // Find GK slot and GK starter
+  const gkSlotIndex = template.findIndex(s => s.position === 'GK');
+  let gkStarterIndex = currentStarters.findIndex(s => {
+    const p = playersMap?.[s.playerId];
+    return p?.position === 'GK' || s.position === 'GK';
   });
+  if (gkStarterIndex === -1 && currentStarters.length > 0) {
+    gkStarterIndex = 0;
+  }
+
+  const assignedSlotIndices = new Set<number>();
+  const assignedStarterIndices = new Set<number>();
+  const newStarters: { playerId: string; position: Position; pitchX: number; pitchY: number }[] = new Array(11);
+
+  // Assign GK
+  if (gkSlotIndex !== -1 && gkStarterIndex !== -1) {
+    const gkSlot = template[gkSlotIndex];
+    newStarters[gkSlotIndex] = {
+      playerId: currentStarters[gkStarterIndex].playerId,
+      position: gkSlot.position,
+      pitchX: gkSlot.pitchX,
+      pitchY: gkSlot.pitchY
+    };
+    assignedSlotIndices.add(gkSlotIndex);
+    assignedStarterIndices.add(gkStarterIndex);
+  }
+
+  // For remaining outfield players, match optimally to slots
+  const calcAffinity = (starterIdx: number, slotIdx: number) => {
+    const starter = currentStarters[starterIdx];
+    const slot = template[slotIdx];
+    const p = playersMap?.[starter.playerId];
+
+    let score = 0;
+    const playerPos = p?.position || starter.position;
+    const slotLine = getLine(slot.position);
+    const playerLine = getLine(playerPos);
+
+    if (p) {
+      const fit = getPositionFitOvr(p, slot.position);
+      // S: 0 penalty, A: -2, B: -4, C: -8, D: -18/-32
+      score += (100 - fit.penalty * 3);
+    } else {
+      if (playerPos === slot.position) score += 90;
+      else if (playerLine === slotLine) score += 40;
+    }
+
+    // Heavy penalty for severe line crossover (e.g. ST playing CB or CB playing ST)
+    if ((slotLine === 'DF' && playerLine === 'FW') || (slotLine === 'FW' && playerLine === 'DF')) {
+      score -= 120;
+    }
+
+    // Side match (Left / Right / Center)
+    const slotSide = getSide(slot.pitchX);
+    const playerSide = getSideFromPos(playerPos);
+    if (slotSide === playerSide && slotSide !== 'C') {
+      score += 25;
+    } else if (slotSide !== playerSide && slotSide !== 'C' && playerSide !== 'C') {
+      score -= 40; // Lateral mismatch penalty
+    }
+
+    // Continuity bonus if player was already playing this position or slot
+    if (starter.position === slot.position) {
+      score += 30;
+    }
+
+    return score;
+  };
+
+  // Pair remaining starters to remaining slots greedily by highest affinity
+  while (assignedSlotIndices.size < template.length && assignedStarterIndices.size < currentStarters.length) {
+    let bestScore = -Infinity;
+    let bestStarterIdx = -1;
+    let bestSlotIdx = -1;
+
+    for (let sIdx = 0; sIdx < currentStarters.length; sIdx++) {
+      if (assignedStarterIndices.has(sIdx)) continue;
+      for (let slIdx = 0; slIdx < template.length; slIdx++) {
+        if (assignedSlotIndices.has(slIdx)) continue;
+        const score = calcAffinity(sIdx, slIdx);
+        if (score > bestScore) {
+          bestScore = score;
+          bestStarterIdx = sIdx;
+          bestSlotIdx = slIdx;
+        }
+      }
+    }
+
+    if (bestStarterIdx !== -1 && bestSlotIdx !== -1) {
+      const slot = template[bestSlotIdx];
+      newStarters[bestSlotIdx] = {
+        playerId: currentStarters[bestStarterIdx].playerId,
+        position: slot.position,
+        pitchX: slot.pitchX,
+        pitchY: slot.pitchY
+      };
+      assignedSlotIndices.add(bestSlotIdx);
+      assignedStarterIndices.add(bestStarterIdx);
+    } else {
+      break;
+    }
+  }
+
+  // Fill any unassigned slots
+  for (let slIdx = 0; slIdx < template.length; slIdx++) {
+    if (!newStarters[slIdx]) {
+      const slot = template[slIdx];
+      newStarters[slIdx] = {
+        playerId: '',
+        position: slot.position,
+        pitchX: slot.pitchX,
+        pitchY: slot.pitchY
+      };
+    }
+  }
 
   return {
     ...currentTactics,

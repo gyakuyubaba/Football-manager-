@@ -20,6 +20,7 @@ export type PlayerPersonality =
 
 export type PlayStyle = 
   | 'ゴールゲッター'
+  | 'シャドーストライカー'
   | 'ラインブレイカー'
   | 'バランス型'
   | 'チャンスメイカー'
@@ -221,7 +222,7 @@ export interface Club {
   wageBudget: number; // € / week
   currentWageSpend: number; // € / week
   target: 'リーグ優勝' | 'チャンピオンズリーグ出場圏' | '欧州大会圏内' | '上位進出' | '中位安定' | 'リーグ残留' | 'カップ戦タイトル' | '1部昇格' | '昇格プレーオフ進出';
-  fanExpectation: '極めて高い（タイトル必須）' | '高い（上位争い）' | '現実的（堅実な戦い）' | '残留最優先';
+  fanExpectation: '極めて高い（タイトル必須）' | '高い（上位争い）' | '現実的（堅実な戦い）' | '残留最優先' | '昇格争い' | '自動昇格必須' | '上位進出' | '中位以上' | '中位安定' | 'プレーオフ進出';
   stadiumName: string;
   stadiumCapacity: number;
   primaryColor: string;

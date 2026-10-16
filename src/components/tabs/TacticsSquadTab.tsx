@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { GameWorldState, TeamTactics, FormationName, Player, Position, NewsItem } from '../../types/game';
-import { Shield, Users, Activity, Shuffle, Sliders, AlertCircle, AlertTriangle, ArrowLeftRight, CheckCircle2, Move, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Shield, Users, Activity, Shuffle, Sliders, AlertCircle, AlertTriangle, ArrowLeftRight, CheckCircle2, Move, ZoomIn, ZoomOut, RotateCcw, Sparkles } from 'lucide-react';
 import { PlayerReplacementModal } from '../PlayerReplacementModal';
 import { executePlayerReplacement } from '../../engine/dataValidator';
-import { getPositionFitOvr, FORMATION_TEMPLATES } from '../../engine/tacticsEngine';
+import { getPositionFitOvr, FORMATION_TEMPLATES, updateTacticsFormation } from '../../engine/tacticsEngine';
 
 interface Props {
   state: GameWorldState;
@@ -203,11 +203,64 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
   };
 
   const handleFormationChange = (formation: FormationName) => {
-    onUpdateTactics({
-      ...tactics,
-      formation
-    });
+    const updated = updateTacticsFormation(tactics, formation, state.players);
+    onUpdateTactics(updated);
+    setToastMessage(`フォーメーションを【${formation}】に変形しました！ピッチ上の配置を更新`);
+    setTimeout(() => setToastMessage(null), 3000);
   };
+
+  const starterCounts = useMemo(() => {
+    let df = 0, mf = 0, fw = 0, gk = 0;
+    (tactics.lineup?.starters || []).forEach(s => {
+      if (s.position === 'GK') gk++;
+      else if (['CB', 'LB', 'RB', 'LWB', 'RWB'].includes(s.position)) df++;
+      else if (['CDM', 'CM', 'CAM', 'LM', 'RM'].includes(s.position)) mf++;
+      else fw++;
+    });
+    return { gk, df, mf, fw };
+  }, [tactics.lineup?.starters]);
+
+  const POPULAR_PRESETS: FormationName[] = [
+    '4-3-3',
+    '4-2-3-1',
+    '4-4-2',
+    '3-5-2',
+    '3-4-2-1',
+    '5-3-2',
+    '非対称4-3-3',
+    '偽SB型4-3-3'
+  ];
+
+  const FORMATION_GROUPS = [
+    {
+      group: '4バック系（標準・バランス）',
+      items: [
+        '4-3-3', '4-3-3 Holding', '4-3-3 Defensive', '4-3-3 Attacking',
+        '4-2-3-1', '4-2-2-2', '4-4-2', '4-4-1-1', '4-1-4-1', '4-1-2-3',
+        '4-1-3-2', '4-5-1', '4-3-1-2', '4-3-2-1', '4-2-4'
+      ] as FormationName[]
+    },
+    {
+      group: '3バック系（攻撃的・幅広展開）',
+      items: [
+        '3-5-2', '3-4-3', '3-4-2-1', '3-4-1-2', '3-1-4-2', '3-2-4-1', '3-3-3-1'
+      ] as FormationName[]
+    },
+    {
+      group: '5バック系（堅守速攻・低重心）',
+      items: [
+        '5-3-2', '5-4-1', '5-2-3', '5-2-2-1', '5-3-1-1'
+      ] as FormationName[]
+    },
+    {
+      group: 'モダン・変則戦術系',
+      items: [
+        '非対称4-3-3', '非対称4-2-3-1', '偽SB型4-3-3', '攻撃時3バック化',
+        '守備時5バック化', 'ダイヤモンド型4-4-2', 'フラット型4-5-1',
+        '2トップ＋トップ下型', '中央密集型', '両ウイング高位置型', '片側ウイング偏重型'
+      ] as FormationName[]
+    }
+  ];
 
   const renderConditionDot = (condition: Player['condition']) => {
     switch (condition) {
@@ -256,26 +309,60 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
       )}
 
       {/* Header with Sub-tabs & Formation Selector */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg">
-        <div>
-          <h2 className="text-xl font-bold text-white font-display">チーム編成・戦術司令塔</h2>
-          <div className="text-xs text-slate-400 mt-0.5">
-            所属選手: {userClub?.playerIds.length || 0}名 · スカッド登録完了
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold text-white font-display">チーム編成・戦術司令塔</h2>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-xs font-bold flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                ピッチ配置連動・変形対応
+              </span>
+            </div>
+            <div className="text-xs text-slate-400 mt-0.5">
+              所属選手: {userClub?.playerIds.length || 0}名 · 現在の配置: <span className="text-emerald-400 font-mono font-bold">{tactics.formation}</span>（GK: {starterCounts.gk} / DF: {starterCounts.df} / MF: {starterCounts.mf} / FW: {starterCounts.fw}）
+            </div>
+          </div>
+
+          {/* Formation dropdown */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-400 shrink-0">フォーメーション:</span>
+            <select
+              value={tactics.formation}
+              onChange={e => handleFormationChange(e.target.value as FormationName)}
+              className="bg-slate-800 border border-emerald-500/50 hover:border-emerald-400 rounded-xl px-3 py-2 text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all cursor-pointer shadow-md"
+            >
+              {FORMATION_GROUPS.map(grp => (
+                <optgroup key={grp.group} label={grp.group} className="bg-slate-900 text-slate-300 font-bold">
+                  {grp.items.map(f => (
+                    <option key={f} value={f} className="text-white bg-slate-800 py-1 font-sans">{f}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
           </div>
         </div>
 
-        {/* Formation dropdown */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-slate-400">フォーメーション:</span>
-          <select
-            value={tactics.formation}
-            onChange={e => handleFormationChange(e.target.value as FormationName)}
-            className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs sm:text-sm font-bold text-white focus:outline-none focus:border-emerald-500 transition-colors"
-          >
-            {FORMATIONS.map(f => (
-              <option key={f} value={f}>{f}</option>
-            ))}
-          </select>
+        {/* Quick Preset Buttons for Immediate Transformation */}
+        <div className="pt-2 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+          <span className="text-[11px] text-slate-400 shrink-0 font-semibold mr-1">クイック変形:</span>
+          {POPULAR_PRESETS.map(preset => {
+            const isCurrent = tactics.formation === preset;
+            return (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => handleFormationChange(preset)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  isCurrent
+                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20 ring-1 ring-emerald-400'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/60 hover:text-white'
+                }`}
+              >
+                {preset}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -326,6 +413,9 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-emerald-400 uppercase tracking-wider font-mono">
                   TACTICAL BOARD ({tactics.formation})
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px] font-bold border border-slate-700">
+                  DF:{starterCounts.df} · MF:{starterCounts.mf} · FW:{starterCounts.fw}
                 </span>
                 {selectedPlayerId && (
                   <span className="px-2 py-0.5 rounded-full bg-yellow-400/20 text-yellow-300 font-bold text-[10px] animate-pulse">
@@ -416,7 +506,7 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
 
                   return (
                     <div
-                      key={p.id + idx}
+                      key={p.id}
                       draggable={!isUnavailable}
                       onDragStart={(e) => {
                         e.dataTransfer.setData('text/plain', p.id);
@@ -449,7 +539,8 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                         left: `${item.pitchX}%`,
                         top: `${item.pitchY}%`,
                         transform: 'translate(-50%, -50%)',
-                        touchAction: 'manipulation'
+                        touchAction: 'manipulation',
+                        transition: 'left 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)'
                       }}
                       className={`group z-10 flex flex-col items-center cursor-pointer transition-all select-none ${
                         isSelected 
