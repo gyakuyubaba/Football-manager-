@@ -1,7 +1,7 @@
 import { YouthProspect, Position, PlayStyle, PlayerPersonality } from '../types/game';
 
 // =========================================================================
-// 日本人選手：姓・名の膨大な実在プール（100+通り × 100+通り = 10,000通り以上）
+// 日本人選手：姓・名の膨大な実在プール（120+ × 80+ = 10,000通り以上の完全ランダム生成）
 // =========================================================================
 const JA_LAST_NAMES = [
   '佐藤', '鈴木', '高橋', '田中', '伊藤', '渡辺', '山本', '中村', '小林', '加藤',
@@ -10,46 +10,22 @@ const JA_LAST_NAMES = [
   '長谷川', '藤田', '近藤', '後藤', '遠藤', '村上', '村田', '新井', '平野', '大塚',
   '千葉', '菅原', '荒木', '福田', '西村', '三浦', '藤井', '岡本', '松田', '中島',
   '原', '中川', '宮崎', '杉山', '上田', '内田', '森本', '竹内', '酒井', '工藤',
-  '横山', '宮本', '福島', '大野', '神谷', '浅野', '矢野', '秋元', '吉岡', '堀'
+  '横山', '宮本', '福島', '大野', '神谷', '浅野', '矢野', '秋元', '吉岡', '堀',
+  '小野', '小泉', '金子', '和田', '中山', '石田', '上野', '柴田', '原田', '田村',
+  '岩崎', '菊地', '野口', '高木', '安藤', '大西', '小池', '服部', '川口', '飯田',
+  '星野', '川崎', '本田', '久保', '武藤', '大迫', '三笘', '堂安', '南野', '板倉',
+  '鎌田', '守田', '旗手', '相馬', '細谷', '町田', '毎熊', '望月', '関根', '高井'
 ];
 
 const JA_FIRST_NAMES = [
-  { kanji: '蓮', romaji: 'Ren' },
-  { kanji: '颯太', romaji: 'Sota' },
-  { kanji: '悠真', romaji: 'Yuma' },
-  { kanji: '蒼', romaji: 'Aoi' },
-  { kanji: '湊', romaji: 'Minato' },
-  { kanji: '大翔', romaji: 'Hiroto' },
-  { kanji: '樹', romaji: 'Itsuki' },
-  { kanji: '陽翔', romaji: 'Haruto' },
-  { kanji: '陸', romaji: 'Riku' },
-  { kanji: '晴', romaji: 'Haru' },
-  { kanji: '律', romaji: 'Ritsu' },
-  { kanji: '琉生', romaji: 'Rui' },
-  { kanji: '翼', romaji: 'Tsubasa' },
-  { kanji: '凱', romaji: 'Gai' },
-  { kanji: '楓', romaji: 'Kaede' },
-  { kanji: '翔', romaji: 'Sho' },
-  { kanji: '陽向', romaji: 'Hinata' },
-  { kanji: '駿', romaji: 'Shun' },
-  { kanji: '颯', romaji: 'Hayate' },
-  { kanji: '柊', romaji: 'Shu' },
-  { kanji: '碧', romaji: 'Ao' },
-  { kanji: '航平', romaji: 'Kohei' },
-  { kanji: '拓真', romaji: 'Takuma' },
-  { kanji: '健人', romaji: 'Kento' },
-  { kanji: '翔太', romaji: 'Shota' },
-  { kanji: '龍之介', romaji: 'Ryunosuke' },
-  { kanji: '洸太', romaji: 'Kota' },
-  { kanji: '怜央', romaji: 'Reo' },
-  { kanji: '壮真', romaji: 'Soma' },
-  { kanji: '快斗', romaji: 'Kaito' },
-  { kanji: '誠也', romaji: 'Seiya' },
-  { kanji: '圭佑', romaji: 'Keisuke' },
-  { kanji: '悠斗', romaji: 'Yuto' },
-  { kanji: '光輝', romaji: 'Koki' },
-  { kanji: '海斗', romaji: 'Kaito' },
-  { kanji: '涼介', romaji: 'Ryosuke' }
+  '蓮', '颯太', '悠真', '蒼', '湊', '大翔', '樹', '陽翔', '陸', '晴',
+  '律', '琉生', '翼', '凱', '楓', '翔', '陽向', '駿', '颯', '柊',
+  '碧', '航平', '拓真', '健人', '翔太', '龍之介', '洸太', '怜央', '壮真', '快斗',
+  '誠也', '圭佑', '悠斗', '光輝', '海斗', '涼介', '大和', '悠生', '朝陽', '優真',
+  '結斗', '陽太', '仁', '晴登', '湊斗', '奏太', '颯真', '晴翔', '大樹', '賢人',
+  '瑛太', '雄大', '翔大', '琉偉', '陸斗', '陽大', '康平', '拓海', '凌平', '隼人',
+  '航大', '遼', '祐樹', '啓太', '真尋', '太一', '直樹', '友也', '大輝', '雅也',
+  '一樹', '将大', '慎太郎', '宗介', '瑛斗', '陽仁', '創太', '暖', '歩夢', '琉希'
 ];
 
 // =========================================================================
@@ -57,28 +33,28 @@ const JA_FIRST_NAMES = [
 // =========================================================================
 const GLOBAL_NAME_POOLS: Record<string, { firstNames: string[]; lastNames: string[] }> = {
   'イングランド': {
-    firstNames: ['Oliver', 'George', 'Harry', 'Jack', 'Leo', 'Charlie', 'Archie', 'Ethan', 'Liam', 'Jude', 'Cole', 'Kobbie', 'Harvey', 'Reece', 'Mason'],
-    lastNames: ['Smith', 'Jones', 'Taylor', 'Brown', 'Davies', 'Wilson', 'Evans', 'Walker', 'Palmer', 'Mainoo', 'Bellingham', 'Rice', 'Gallagher', 'Gray']
+    firstNames: ['Oliver', 'George', 'Harry', 'Jack', 'Leo', 'Charlie', 'Archie', 'Ethan', 'Liam', 'Jude', 'Cole', 'Kobbie', 'Harvey', 'Reece', 'Mason', 'Declan', 'Bukayo', 'Phil', 'Lewis', 'Elliot'],
+    lastNames: ['Smith', 'Jones', 'Taylor', 'Brown', 'Davies', 'Wilson', 'Evans', 'Walker', 'Palmer', 'Mainoo', 'Bellingham', 'Rice', 'Gallagher', 'Gray', 'White', 'Lewis', 'Hall', 'Moore', 'Colwill']
   },
   'スペイン': {
-    firstNames: ['Mateo', 'Hugo', 'Lucas', 'Martín', 'Daniel', 'Pablo', 'Alejandro', 'Pau', 'Marc', 'Lamine', 'Gavi', 'Fermín', 'Nico', 'Brahim'],
-    lastNames: ['García', 'Rodríguez', 'González', 'Fernández', 'López', 'Martínez', 'Sánchez', 'Pérez', 'Gómez', 'Cubarsí', 'Yamal', 'Navarro', 'Romero']
+    firstNames: ['Mateo', 'Hugo', 'Lucas', 'Martín', 'Daniel', 'Pablo', 'Alejandro', 'Pau', 'Marc', 'Lamine', 'Gavi', 'Fermín', 'Nico', 'Brahim', 'Pedri', 'Álex', 'Ferran', 'Yeremy', 'Samu'],
+    lastNames: ['García', 'Rodríguez', 'González', 'Fernández', 'López', 'Martínez', 'Sánchez', 'Pérez', 'Gómez', 'Cubarsí', 'Yamal', 'Navarro', 'Romero', 'Williams', 'Torres', 'Baena', 'Barrios']
   },
   'ドイツ': {
-    firstNames: ['Noah', 'Luca', 'Leon', 'Felix', 'Jonas', 'Florian', 'Lennart', 'Maximilian', 'Paul', 'Aleksandar', 'Jan', 'Moritz', 'Elias'],
-    lastNames: ['Müller', 'Schmidt', 'Schneider', 'Fischer', 'Weber', 'Meyer', 'Wagner', 'Becker', 'Wirtz', 'Pavlović', 'Schulz', 'Koch', 'Bauer']
+    firstNames: ['Noah', 'Luca', 'Leon', 'Felix', 'Jonas', 'Florian', 'Lennart', 'Maximilian', 'Paul', 'Aleksandar', 'Jan', 'Moritz', 'Elias', 'Karim', 'Brajan', 'Assan', 'Rocco'],
+    lastNames: ['Müller', 'Schmidt', 'Schneider', 'Fischer', 'Weber', 'Meyer', 'Wagner', 'Becker', 'Wirtz', 'Pavlović', 'Schulz', 'Koch', 'Bauer', 'Adeyemi', 'Gruda', 'Ouédraogo', 'Reitz']
   },
   'フランス': {
-    firstNames: ['Gabriel', 'Léo', 'Arthur', 'Louis', 'Jules', 'Maël', 'Warren', 'Désiré', 'Bradley', 'Mathys', 'Kylian', 'Rayan', 'Leny'],
-    lastNames: ['Martin', 'Bernard', 'Dubois', 'Thomas', 'Robert', 'Petit', 'Zaïre-Emery', 'Doué', 'Barcola', 'Tel', 'Yoro', 'Cherki', 'Camavinga']
+    firstNames: ['Gabriel', 'Léo', 'Arthur', 'Louis', 'Jules', 'Maël', 'Warren', 'Désiré', 'Bradley', 'Mathys', 'Kylian', 'Rayan', 'Leny', 'Malo', 'Eli', 'Ayyoub', 'Guillaume'],
+    lastNames: ['Martin', 'Bernard', 'Dubois', 'Thomas', 'Robert', 'Petit', 'Zaïre-Emery', 'Doué', 'Barcola', 'Tel', 'Yoro', 'Cherki', 'Camavinga', 'Gusto', 'Kroupi', 'Bouaddi', 'Akliouche']
   },
   'イタリア': {
-    firstNames: ['Leonardo', 'Francesco', 'Alessandro', 'Lorenzo', 'Mattia', 'Riccardo', 'Tommaso', 'Federico', 'Simone', 'Giorgio', 'Niccolò'],
-    lastNames: ['Rossi', 'Russo', 'Ferrari', 'Esposito', 'Bianchi', 'Romano', 'Colombo', 'Ricci', 'Scalvini', 'Pafundi', 'Baldanzi', 'Miretti']
+    firstNames: ['Leonardo', 'Francesco', 'Alessandro', 'Lorenzo', 'Mattia', 'Riccardo', 'Tommaso', 'Federico', 'Simone', 'Giorgio', 'Niccolò', 'Cesare', 'Francesco', 'Samuele'],
+    lastNames: ['Rossi', 'Russo', 'Ferrari', 'Esposito', 'Bianchi', 'Romano', 'Colombo', 'Ricci', 'Scalvini', 'Pafundi', 'Baldanzi', 'Miretti', 'Casadei', 'Camarda', 'Pisilli']
   },
   'ブラジル': {
-    firstNames: ['Gabriel', 'Arthur', 'Bernardo', 'Heitor', 'Davi', 'Pedro', 'Lucas', 'Matheus', 'Endrick', 'Estêvão', 'Vitor', 'Luiz', 'Kaiky'],
-    lastNames: ['Silva', 'Santos', 'Oliveira', 'Souza', 'Rodrigues', 'Ferreira', 'Alves', 'Pereira', 'Lima', 'Roque', 'Willian', 'Carvalho']
+    firstNames: ['Gabriel', 'Arthur', 'Bernardo', 'Heitor', 'Davi', 'Pedro', 'Lucas', 'Matheus', 'Endrick', 'Estêvão', 'Vitor', 'Luiz', 'Kaiky', 'Lorran', 'Rayan', 'Kauã'],
+    lastNames: ['Silva', 'Santos', 'Oliveira', 'Souza', 'Rodrigues', 'Ferreira', 'Alves', 'Pereira', 'Lima', 'Roque', 'Willian', 'Carvalho', 'Nascimento', 'Gomes', 'Ribeiro']
   }
 };
 
@@ -117,9 +93,9 @@ export function generateSingleRandomYouthProspect(
   idSuffix: string | number,
   clubCountry: string = '日本'
 ): YouthProspect {
-  // Determine nationality: 75% local country, 25% foreign talent
+  // Determine nationality: 80% local country, 20% foreign talent
   const isJapanClub = clubCountry === '日本';
-  const pickLocal = Math.random() < 0.75;
+  const pickLocal = Math.random() < 0.80;
 
   let nationality = clubCountry;
   let name = '';
@@ -129,7 +105,7 @@ export function generateSingleRandomYouthProspect(
       nationality = '日本';
       const last = JA_LAST_NAMES[Math.floor(Math.random() * JA_LAST_NAMES.length)];
       const first = JA_FIRST_NAMES[Math.floor(Math.random() * JA_FIRST_NAMES.length)];
-      name = `${last} ${first.kanji} (${first.romaji} ${last})`;
+      name = `${last} ${first}`;
     } else {
       // Foreign prospect in Japanese academy
       const nations = ['ブラジル', 'スペイン', 'ドイツ', 'フランス'];

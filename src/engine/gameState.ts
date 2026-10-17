@@ -13,7 +13,8 @@ import {
 import { ALL_CLUBS, ENABLE_J_LEAGUE } from '../data/clubsData';
 import { J1_20_CLUBS, J2_20_CLUBS } from '../data/jLeagueData';
 import { ALL_EUROPEAN_2ND_DIVISION_CLUBS } from '../data/europeanSecondDivisionClubs';
-import { INITIAL_YOUTH_ACADEMY } from '../data/initialData';
+import { generateRandomYouthAcademy, generateSingleRandomYouthProspect } from '../data/youthGenerator';
+import { deriveRealisticAltPositions } from '../data/playerPositionsHelper';
 import { buildCompletePlayersRegistry, populateClubsWithDefaultSquads, getDefaultTacticsForClub } from '../data/squadPopulator';
 import { getDaysUntilDeadline } from './dateEngine';
 import { ensureYouthAcademyProspects } from './dataValidator';
@@ -116,13 +117,22 @@ export function createNewGameWorld(manager: ManagerProfile, difficultySettings?:
     isSacked: false,
     difficultySettings: difficultySettings || { ...DEFAULT_DIFFICULTY_SETTINGS },
     clubs,
-    players,
+    players: (() => {
+      Object.values(players).forEach(p => {
+        if (!p.initialOvr) p.initialOvr = p.ovr;
+        if (!p.exactOvr) p.exactOvr = p.ovr;
+        if (!p.altPositions || p.altPositions.length === 0) {
+          p.altPositions = deriveRealisticAltPositions(p.position, p.preferredFoot, p.playstyle, p.name);
+        }
+      });
+      return players;
+    })(),
     tactics: initialTactics,
     fixtures: [],
     standings,
     negotiations: {},
     news: [welcomeNews],
-    youthAcademy: ensureYouthAcademyProspects(INITIAL_YOUTH_ACADEMY),
+    youthAcademy: generateRandomYouthAcademy(manager.nationality === '日本' ? '日本' : 'イングランド', 6),
     careerHistory: [],
     trainingFocus: 'バランス総合'
   };
@@ -232,8 +242,21 @@ export function appointUserToClub(state: GameWorldState, chosenClubId: string): 
   });
 
   const chosenClub = updatedClubs[chosenClubId] || ALL_CLUBS.find(c => c.id === chosenClubId) || J2_20_CLUBS.find(c => c.id === chosenClubId);
+
+  Object.values(updatedPlayers).forEach(p => {
+    if (!p.initialOvr) p.initialOvr = p.ovr;
+    if (!p.exactOvr) p.exactOvr = p.ovr;
+    if (!p.altPositions || p.altPositions.length === 0) {
+      p.altPositions = deriveRealisticAltPositions(p.position, p.preferredFoot, p.playstyle, p.name);
+    }
+  });
+
   const userTactics = getDefaultTacticsForClub(chosenClub, updatedPlayers);
   const fixtures = generateSeasonFixtures(updatedClubs, chosenClubId);
+
+  const customYouth = (!state.youthAcademy || state.youthAcademy.length < 5 || state.youthAcademy.some(y => y.id === 'youth_1' || y.name.includes('高橋 蓮') || y.name.includes('(')))
+    ? generateRandomYouthAcademy(chosenClub.country, 6)
+    : state.youthAcademy;
 
   const appointNews: NewsItem = {
     id: `news_appoint_${Date.now()}`,
@@ -253,6 +276,7 @@ export function appointUserToClub(state: GameWorldState, chosenClubId: string): 
     tactics: userTactics,
     fixtures,
     news: [appointNews, ...state.news],
+    youthAcademy: customYouth,
     boardConfidence: 85,
     fanApproval: 80
   };
@@ -540,11 +564,24 @@ export function loadGameState(): GameWorldState | null {
       state = migrateJLeagueIntoExistingState(state);
     }
 
+    if (state.players) {
+      Object.values(state.players).forEach(p => {
+        if (!p.initialOvr) p.initialOvr = p.ovr;
+        if (!p.exactOvr) p.exactOvr = p.ovr;
+        if (!p.altPositions || p.altPositions.length === 0) {
+          p.altPositions = deriveRealisticAltPositions(p.position, p.preferredFoot, p.playstyle, p.name);
+        }
+      });
+    }
+
     if (!state.difficultySettings) {
       state.difficultySettings = { ...DEFAULT_DIFFICULTY_SETTINGS };
     }
-    if (!state.youthAcademy || state.youthAcademy.length < 5) {
-      state.youthAcademy = ensureYouthAcademyProspects(state.youthAcademy);
+
+    const hasOldYouthFormat = state.youthAcademy?.some(y => y.name.includes('(') || y.name.includes('高橋 蓮') || y.id === 'youth_1');
+    if (hasOldYouthFormat || !state.youthAcademy || state.youthAcademy.length < 5) {
+      const clubCountry = state.userClubId && state.clubs[state.userClubId] ? state.clubs[state.userClubId].country : '日本';
+      state.youthAcademy = generateRandomYouthAcademy(clubCountry, 6);
     }
     return state;
   } catch (err) {

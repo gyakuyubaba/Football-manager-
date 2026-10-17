@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Player, Club } from '../types/game';
 import { FatigueGauge, ConditionDot } from './common/FatigueGauge';
+import { PlayablePositionsMap } from './common/PlayablePositionsMap';
+import { PlayerGrowthView } from './common/PlayerGrowthView';
 import { useI18n } from '../i18n/LanguageContext';
-import { Shield, Heart, Zap, Award, AlertTriangle, Calendar, DollarSign, X } from 'lucide-react';
+import { Shield, Heart, Zap, Award, AlertTriangle, Calendar, DollarSign, X, TrendingUp, UserCheck } from 'lucide-react';
 
 interface Props {
   player: Player | null;
@@ -24,6 +26,7 @@ export const PlayerDetailModal: React.FC<Props> = ({
   onClose 
 }) => {
   const { t } = useI18n();
+  const [modalTab, setModalTab] = useState<'positions' | 'growth'>('positions');
   if (!player) return null;
 
   return (
@@ -61,125 +64,165 @@ export const PlayerDetailModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Status Highlights: Fatigue & Condition Clearly Separated (Requirements 6 & 7) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
-          {/* Fatigue Gauge Box */}
-          <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
-            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              {t.fatigue} (Fatigue Gauge)
-            </div>
-            <FatigueGauge fatigue={player.fatigue} size="md" showFraction />
-          </div>
+        {/* Modal Navigation Tabs */}
+        <div className="flex items-center gap-2 mb-4 border-b border-slate-800 pb-2">
+          <button
+            type="button"
+            onClick={() => setModalTab('positions')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              modalTab === 'positions'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-white bg-slate-950/60 border border-slate-800'
+            }`}
+          >
+            <Shield className="w-3.5 h-3.5 text-emerald-400" />
+            <span>守れるポジション・能力詳細</span>
+          </button>
 
-          {/* Condition Box */}
-          <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
-            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              {t.condition} (Match Form)
-            </div>
-            <div className="flex items-center gap-2 pt-0.5">
-              <ConditionDot condition={player.condition} showLabel />
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={() => setModalTab('growth')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              modalTab === 'growth'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
+                : 'text-slate-400 hover:text-white bg-slate-950/60 border border-slate-800'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+            <span>選手成長の可視化・能力推移</span>
+          </button>
         </div>
 
-        {/* Contract, Health, and Trust Status Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-            <span className="text-[10px] text-slate-500 block">契約年数・役割</span>
-            <div className="text-xs font-bold text-white mt-0.5">
-              残{player.contractYears}年 · {player.squadRole}
-            </div>
+        {modalTab === 'growth' ? (
+          <div className="mb-5">
+            <PlayerGrowthView player={player} />
           </div>
+        ) : (
+          <>
+            {/* Status Highlights: Fatigue & Condition */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
+                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  {t.fatigue} (Fatigue Gauge)
+                </div>
+                <FatigueGauge fatigue={player.fatigue} size="md" showFraction />
+              </div>
 
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-            <span className="text-[10px] text-slate-500 block">市場価値・週給</span>
-            <div className="text-xs font-bold text-emerald-400 font-mono mt-0.5">
-              €{(player.marketValue / 1000000).toFixed(1)}M (週給€{(player.wage / 1000).toFixed(0)}k)
+              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
+                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  {t.condition} (Match Form)
+                </div>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <ConditionDot condition={player.condition} showLabel />
+                </div>
+              </div>
             </div>
-          </div>
 
-          <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-            <span className="text-[10px] text-slate-500 block">健康状態・出場資格</span>
-            <div className="text-xs font-bold mt-0.5">
-              {player.injuryStatus === 'INJURED' || player.injury?.isInjured ? (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-red-400 font-black">
-                    <span className="px-1.5 py-0.5 rounded bg-red-950 border border-red-800 text-[10px]">【負傷】</span>
-                    <span>負傷中（{player.injuryType || player.injury?.type || '負傷'}）</span>
-                  </div>
-                  <div className="text-[11px] text-red-300 font-mono">
-                    復帰予定：{player.injuryReturnDate || player.injury?.returnDate || '診断中'}
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-mono">
-                    あと {player.injuryDaysRemaining || player.injury?.recoveryDays || 0} 日
-                  </div>
+            {/* Contract, Health, and Trust Status Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-500 block">契約年数・役割</span>
+                <div className="text-xs font-bold text-white mt-0.5">
+                  残{player.contractYears}年 · {player.squadRole}
                 </div>
-              ) : player.suspension?.isSuspended ? (
-                <div className="flex items-center gap-1.5 text-amber-400 font-bold">
-                  <span className="px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-[10px]">【出場停止】</span>
-                  <span>停止中 (残{player.suspension.matchesRemaining}試合)</span>
+              </div>
+
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-500 block">市場価値・週給</span>
+                <div className="text-xs font-bold text-emerald-400 font-mono mt-0.5">
+                  €{(player.marketValue / 1000000).toFixed(1)}M (週給€{(player.wage / 1000).toFixed(0)}k)
                 </div>
-              ) : (
-                <div className="space-y-1">
-                  <span className="text-emerald-400 font-bold flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                    HEALTHY (出場可能)
-                  </span>
-                  {player.fatigue >= 70 && (
-                    <div className="text-[10px] text-amber-400 font-bold">
-                      【疲労蓄積警告: {player.fatigue}%】負傷リスク上昇中
+              </div>
+
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-500 block">健康状態・出場資格</span>
+                <div className="text-xs font-bold mt-0.5">
+                  {player.injuryStatus === 'INJURED' || player.injury?.isInjured ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-red-400 font-black">
+                        <span className="px-1.5 py-0.5 rounded bg-red-950 border border-red-800 text-[10px]">【負傷】</span>
+                        <span>負傷中（{player.injuryType || player.injury?.type || '負傷'}）</span>
+                      </div>
+                      <div className="text-[11px] text-red-300 font-mono">
+                        復帰予定：{player.injuryReturnDate || player.injury?.returnDate || '診断中'}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        あと {player.injuryDaysRemaining || player.injury?.recoveryDays || 0} 日
+                      </div>
+                    </div>
+                  ) : player.suspension?.isSuspended ? (
+                    <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                      <span className="px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-[10px]">【出場停止】</span>
+                      <span>停止中 (残{player.suspension.matchesRemaining}試合)</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <span className="text-emerald-400 font-bold flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        HEALTHY (出場可能)
+                      </span>
+                      {player.fatigue >= 70 && (
+                        <div className="text-[10px] text-amber-400 font-bold">
+                          【疲労蓄積警告: {player.fatigue}%】負傷リスク上昇中
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Detailed Attributes */}
-        <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 mb-5">
-          <div className="text-xs font-bold text-white mb-3 uppercase tracking-wider">
-            能力パラメータ詳細 (Attributes)
-          </div>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 text-center">
-            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-mono">PAC (スピード)</span>
-              <span className="text-base font-bold text-white font-mono">{player.pace}</span>
+            {/* Playable Positions Map (守れるポジション・適性一覧) */}
+            <div className="mb-4">
+              <PlayablePositionsMap player={player} />
             </div>
-            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-mono">SHO (決定力)</span>
-              <span className="text-base font-bold text-white font-mono">{player.shooting}</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-mono">PAS (パス)</span>
-              <span className="text-base font-bold text-white font-mono">{player.passing}</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-mono">DRI (ドリブル)</span>
-              <span className="text-base font-bold text-white font-mono">{player.dribbling}</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-mono">DEF (守備力)</span>
-              <span className="text-base font-bold text-white font-mono">{player.defending}</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-mono">PHY (フィジカル)</span>
-              <span className="text-base font-bold text-white font-mono">{player.physical}</span>
-            </div>
-          </div>
-        </div>
 
-        {/* Personality & Playstyle */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-[10px] text-slate-500 block">プレースタイル</span>
-            <span className="text-xs font-bold text-blue-300 mt-0.5 block">{player.playstyle}</span>
-          </div>
-          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-[10px] text-slate-500 block">パーソナリティ (性格)</span>
-            <span className="text-xs font-bold text-purple-300 mt-0.5 block">{player.personality}</span>
-          </div>
-        </div>
+            {/* Detailed Attributes */}
+            <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 mb-4">
+              <div className="text-xs font-bold text-white mb-3 uppercase tracking-wider">
+                能力パラメータ詳細 (Attributes)
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 text-center">
+                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block font-mono">PAC (スピード)</span>
+                  <span className="text-base font-bold text-white font-mono">{player.pace}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block font-mono">SHO (決定力)</span>
+                  <span className="text-base font-bold text-white font-mono">{player.shooting}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block font-mono">PAS (パス)</span>
+                  <span className="text-base font-bold text-white font-mono">{player.passing}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block font-mono">DRI (ドリブル)</span>
+                  <span className="text-base font-bold text-white font-mono">{player.dribbling}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block font-mono">DEF (守備力)</span>
+                  <span className="text-base font-bold text-white font-mono">{player.defending}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block font-mono">PHY (フィジカル)</span>
+                  <span className="text-base font-bold text-white font-mono">{player.physical}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Personality & Playstyle */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-[10px] text-slate-500 block">プレースタイル</span>
+                <span className="text-xs font-bold text-blue-300 mt-0.5 block">{player.playstyle}</span>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-[10px] text-slate-500 block">パーソナリティ (性格)</span>
+                <span className="text-xs font-bold text-purple-300 mt-0.5 block">{player.personality}</span>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Transfer & Loan Listing Operations (Requirement 5 & 6) */}
         {isUserPlayer && (

@@ -15,11 +15,14 @@ import {
   Languages,
   Database,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 import { useI18n } from '../../i18n/LanguageContext';
 import { saveGameState } from '../../engine/gameState';
 import { runAll16Tests, TestResult } from '../../engine/testSuite';
+import { generateRandomYouthAcademy } from '../../data/youthGenerator';
 
 interface Props {
   state: GameWorldState;
@@ -65,6 +68,19 @@ export const ManagerCareerTab: React.FC<Props> = ({
     { id: 'コンディション回復', desc: '疲労蓄積を大幅に解消（リカバリー重視）' },
     { id: '若手重点育成', desc: '21歳以下の選手の能力成長スピードがアップ' }
   ] as const;
+
+  const [youthScoutMessage, setYouthScoutMessage] = useState<string | null>(null);
+
+  const handleScoutNewYouth = () => {
+    const clubCountry = userClub?.country || (state.manager.nationality === '日本' ? '日本' : 'イングランド');
+    const newAcademy = generateRandomYouthAcademy(clubCountry, 6);
+    onUpdateState({
+      ...state,
+      youthAcademy: newAcademy
+    });
+    setYouthScoutMessage('スカウト網が新しい有望ユース選手を発掘・選出しました！');
+    setTimeout(() => setYouthScoutMessage(null), 3500);
+  };
 
   const handleManualSave = () => {
     const ok = saveGameState(state);
@@ -199,15 +215,40 @@ export const ManagerCareerTab: React.FC<Props> = ({
 
           {/* Youth Academy Prospects */}
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
-                <GraduationCap className="w-4 h-4 text-blue-400" />
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  ユースアカデミー発掘有望株 (Youth Academy Wonderkids)
-                </h3>
+                <GraduationCap className="w-5 h-5 text-blue-400" />
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    ユースアカデミー発掘有望株 (Youth Academy Wonderkids)
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    世界基準のスカウティングネットワークにより発掘されたアカデミー所属生
+                  </p>
+                </div>
               </div>
-              <span className="text-xs text-slate-500 font-mono">{state.youthAcademy.length} 名</span>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="text-xs text-slate-400 font-mono font-bold bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
+                  {state.youthAcademy.length} 名
+                </span>
+                <button
+                  type="button"
+                  onClick={handleScoutNewYouth}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-600/20 cursor-pointer"
+                  title="世界・国内スカウト網を再展開して新しいユース選手候補を発掘します"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>新ユース再スカウト</span>
+                </button>
+              </div>
             </div>
+
+            {youthScoutMessage && (
+              <div className="mb-3 p-3 rounded-xl bg-blue-950/80 border border-blue-500/50 text-blue-200 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                <Sparkles className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>{youthScoutMessage}</span>
+              </div>
+            )}
 
             <div className="space-y-3">
               {state.youthAcademy.map(prospect => (

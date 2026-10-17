@@ -202,11 +202,231 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
     });
   };
 
+  const [tacticalPhase, setTacticalPhase] = useState<'defend' | 'attack'>('defend');
+  const [attackMorphPreset, setAttackMorphPreset] = useState<'inverted_fb' | 'anchor_drop' | 'wide_wings' | 'box_mid'>('inverted_fb');
+
   const handleFormationChange = (formation: FormationName) => {
     const updated = updateTacticsFormation(tactics, formation, state.players);
     onUpdateTactics(updated);
+    if (onUpdateState) {
+      onUpdateState({
+        ...state,
+        tactics: updated,
+        clubs: state.userClubId ? {
+          ...state.clubs,
+          [state.userClubId]: {
+            ...state.clubs[state.userClubId],
+            currentFormation: formation
+          }
+        } : state.clubs
+      });
+    }
     setToastMessage(`フォーメーションを【${formation}】に変形しました！ピッチ上の配置を更新`);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Calculate fluid attacking morph coordinates (可変フォーメーション・ボール保持時変形)
+  const getMorphedCoordinates = (item: { position: Position; pitchX: number; pitchY: number; playerId: string }) => {
+    if (tacticalPhase === 'defend') {
+      return { x: item.pitchX, y: item.pitchY };
+    }
+    // In attack phase, fluidly morph based on tactical archetype
+    let x = item.pitchX;
+    let y = item.pitchY;
+
+    switch (item.position) {
+      case 'GK':
+        y = 88;
+        break;
+      case 'CB':
+        y = Math.max(68, item.pitchY - 6);
+        if (item.pitchX < 45) x = Math.max(26, item.pitchX - 5);
+        else if (item.pitchX > 55) x = Math.min(74, item.pitchX + 5);
+        break;
+      case 'LB':
+      case 'LWB':
+        if (attackMorphPreset === 'inverted_fb') {
+          x = 36;
+          y = 52; // Tucks into midfield alongside anchor
+        } else {
+          x = 12;
+          y = 35; // Wide overlap
+        }
+        break;
+      case 'RB':
+      case 'RWB':
+        if (attackMorphPreset === 'inverted_fb') {
+          x = 64;
+          y = 52; // Tucks into midfield alongside anchor
+        } else {
+          x = 88;
+          y = 35; // Wide overlap
+        }
+        break;
+      case 'CDM':
+        if (attackMorphPreset === 'anchor_drop') {
+          x = 50;
+          y = 76; // Drops between CBs into 3-back
+        } else {
+          y = 52;
+        }
+        break;
+      case 'CM':
+        y = Math.max(34, item.pitchY - 8);
+        break;
+      case 'CAM':
+        y = 28;
+        break;
+      case 'LM':
+      case 'LW':
+        if (attackMorphPreset === 'wide_wings') {
+          x = 10;
+          y = 20;
+        } else {
+          x = 18;
+          y = 22;
+        }
+        break;
+      case 'RM':
+      case 'RW':
+        if (attackMorphPreset === 'wide_wings') {
+          x = 90;
+          y = 20;
+        } else {
+          x = 82;
+          y = 22;
+        }
+        break;
+      case 'CF':
+      case 'ST':
+        y = Math.max(14, item.pitchY - 4);
+        break;
+    }
+    return { x, y };
+  };
+
+  // Free Drag Deformation (ピッチ上の任意位置への自由ドラッグ変形)
+  const handleMovePlayerToPitchPosition = (playerId: string, pitchX: number, pitchY: number) => {
+    const currentStarters = [...(tactics.lineup?.starters || [])];
+    const starterIdx = currentStarters.findIndex(s => s.playerId === playerId);
+    if (starterIdx !== -1) {
+      let inferredPos = currentStarters[starterIdx].position;
+      if (pitchY >= 82) inferredPos = 'GK';
+      else if (pitchY >= 65) {
+        if (pitchX <= 25) inferredPos = 'LB';
+        else if (pitchX >= 75) inferredPos = 'RB';
+        else inferredPos = 'CB';
+      } else if (pitchY >= 48) {
+        if (pitchX <= 22) inferredPos = 'LWB';
+        else if (pitchX >= 78) inferredPos = 'RWB';
+        else inferredPos = 'CDM';
+      } else if (pitchY >= 32) {
+        if (pitchX <= 24) inferredPos = 'LM';
+        else if (pitchX >= 76) inferredPos = 'RM';
+        else if (pitchY <= 40) inferredPos = 'CAM';
+        else inferredPos = 'CM';
+      } else {
+        if (pitchX <= 30) inferredPos = 'LW';
+        else if (pitchX >= 70) inferredPos = 'RW';
+        else if (pitchY <= 20) inferredPos = 'ST';
+        else inferredPos = 'CF';
+      }
+
+      currentStarters[starterIdx] = {
+        ...currentStarters[starterIdx],
+        pitchX,
+        pitchY,
+        position: inferredPos
+      };
+
+      onUpdateTactics({
+        ...tactics,
+        lineup: {
+          ...tactics.lineup,
+          starters: currentStarters
+        }
+      });
+      setToastMessage(`選手の配置を自由変形しました (${inferredPos}: X ${pitchX}% / Y ${pitchY}%)`);
+      setTimeout(() => setToastMessage(null), 2500);
+    }
+  };
+
+  // Reset to default template coordinates
+  const handleResetToTemplatePositions = () => {
+    const template = FORMATION_TEMPLATES[tactics.formation];
+    if (!template) return;
+    const resetStarters = tactics.lineup.starters.map((s, idx) => ({
+      ...s,
+      pitchX: template[idx]?.pitchX ?? s.pitchX,
+      pitchY: template[idx]?.pitchY ?? s.pitchY,
+      position: template[idx]?.position ?? s.position
+    }));
+    onUpdateTactics({
+      ...tactics,
+      lineup: {
+        ...tactics.lineup,
+        starters: resetStarters
+      }
+    });
+    setToastMessage(`フォーメーション【${tactics.formation}】の標準初期配置に復帰しました`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Auto-fit squad members into starting XI with optimal positional suitability
+  const handleAutoFitStartingXI = () => {
+    if (!state.userClubId) return;
+    const club = state.clubs[state.userClubId];
+    if (!club) return;
+    const allSquad = club.playerIds.map(id => state.players[id]).filter(Boolean);
+    const template = FORMATION_TEMPLATES[tactics.formation];
+    if (!template) return;
+
+    const assignedIds = new Set<string>();
+    const newStarters = template.map(slot => {
+      // Find candidate with best score for this slot
+      let bestP: Player | null = null;
+      let bestScore = -Infinity;
+
+      allSquad.forEach(p => {
+        if (assignedIds.has(p.id)) return;
+        if (p.injury?.isInjured || p.suspension?.isSuspended) return;
+        const fit = getPositionFitOvr(p, slot.position);
+        const score = 100 - fit.penalty * 3 + p.ovr;
+        if (score > bestScore) {
+          bestScore = score;
+          bestP = p;
+        }
+      });
+
+      if (!bestP) {
+        bestP = allSquad.find(p => !assignedIds.has(p.id)) || allSquad[0];
+      }
+      if (bestP) assignedIds.add(bestP.id);
+
+      return {
+        playerId: bestP?.id || '',
+        position: slot.position,
+        pitchX: slot.pitchX,
+        pitchY: slot.pitchY
+      };
+    });
+
+    const remaining = allSquad.filter(p => !assignedIds.has(p.id));
+    const newBench = remaining.slice(0, 9).map(p => p.id);
+    const newReserves = remaining.slice(9).map(p => p.id);
+
+    const updatedTactics: TeamTactics = {
+      ...tactics,
+      lineup: {
+        starters: newStarters,
+        bench: newBench,
+        reserves: newReserves
+      }
+    };
+
+    onUpdateTactics(updatedTactics);
+    setToastMessage('全所属選手からポジション適性・能力値最高のスタメンを自動最適編成しました！');
+    setTimeout(() => setToastMessage(null), 3500);
   };
 
   const starterCounts = useMemo(() => {
@@ -458,12 +678,103 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
               </div>
             </div>
 
+            {/* Fluid Phase & Morphing Controls (可変フォーメーション・変形システム) */}
+            <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-2.5 mb-3 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-400">戦術フェーズ変形:</span>
+                  <div className="flex items-center bg-slate-900 p-0.5 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTacticalPhase('defend');
+                        setToastMessage('🛡️ 守備時・基本配置を表示中（ポジション位置連動）');
+                        setTimeout(() => setToastMessage(null), 2500);
+                      }}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        tacticalPhase === 'defend'
+                          ? 'bg-emerald-500 text-slate-950 shadow-md font-black ring-1 ring-emerald-300'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>🛡️</span>
+                      <span>守備時（基本配置）</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTacticalPhase('attack');
+                        setToastMessage(`⚔️ 攻撃時変形（${attackMorphPreset === 'inverted_fb' ? '偽SB型3-2-4-1' : attackMorphPreset === 'anchor_drop' ? '3バック化' : attackMorphPreset === 'wide_wings' ? '幅広ウイング' : 'ボックスMF'}）でピッチを変形中！`);
+                        setTimeout(() => setToastMessage(null), 2500);
+                      }}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        tacticalPhase === 'attack'
+                          ? 'bg-amber-400 text-slate-950 shadow-md font-black ring-1 ring-amber-200'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>⚔️</span>
+                      <span>攻撃時変形（可変ビルドアップ）</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Reset and Auto-Fit buttons */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleAutoFitStartingXI}
+                    className="px-2.5 py-1 rounded-lg bg-blue-600/90 hover:bg-blue-500 text-white text-[11px] font-bold flex items-center gap-1 transition-all shadow-sm cursor-pointer"
+                    title="全所属選手からポジション適性・総合値最高の11名を自動選出します"
+                  >
+                    <Sparkles className="w-3 h-3 text-cyan-300" />
+                    <span>適性自動最適化</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetToTemplatePositions}
+                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                    title="フォーメーション初期標準位置に整列リセット"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>整列リセット</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* If in attack phase, show attack pattern selector */}
+              {tacticalPhase === 'attack' && (
+                <div className="flex items-center gap-1 text-[11px] pt-1 border-t border-slate-900 overflow-x-auto">
+                  <span className="text-amber-400 font-bold shrink-0">攻撃時変形パターン:</span>
+                  {[
+                    { id: 'inverted_fb', label: '偽SB型 (3-2-4-1化)' },
+                    { id: 'anchor_drop', label: 'アンカー落ち (3バック化)' },
+                    { id: 'wide_wings', label: '両ウイング超高位置型' }
+                  ].map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setAttackMorphPreset(p.id as any)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all shrink-0 cursor-pointer ${
+                        attackMorphPreset === p.id
+                          ? 'bg-amber-400/20 text-amber-300 border border-amber-400/50'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Instruction tooltip */}
             <div className="mb-2 px-1 text-[11px] text-slate-400 flex items-center justify-between">
               <span>
                 {selectedPlayerId 
-                  ? '🔄 移動先のスタメンまたはベンチ選手をタップ（またはドロップ）してください' 
-                  : '💡 選手をタップまたはドラッグして別の選手の位置へ移動させると直接入れ替わります'}
+                  ? '🔄 移動先のスタメンまたはベンチ選手をタップ（または空き地へドロップ）してください' 
+                  : '💡 選手をタップまたはドラッグして別の選手の位置や空きピッチへ移動させると自由変形・配置入替できます'}
               </span>
               {selectedPlayerId && (
                 <button
@@ -476,11 +787,26 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
               )}
             </div>
 
-            {/* Pitch Container with Grass Pattern (Scalable Zoom Wrapper) */}
+            {/* Pitch Container with Grass Pattern (Scalable Zoom Wrapper & Drop Zone) */}
             <div className="relative w-full overflow-hidden rounded-2xl border-2 border-emerald-600/40 shadow-2xl bg-emerald-950/20">
               <div 
                 className="relative w-full aspect-[3/4] pitch-pattern p-3 transition-transform duration-200 origin-top"
                 style={{ transform: `scale(${pitchZoom / 100})` }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const draggedId = e.dataTransfer.getData('text/plain') || selectedPlayerId;
+                  if (!draggedId) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const rawX = ((e.clientX - rect.left) / rect.width) * 100;
+                  const rawY = ((e.clientY - rect.top) / rect.height) * 100;
+                  const pitchX = Math.max(8, Math.min(92, Math.round(rawX)));
+                  const pitchY = Math.max(10, Math.min(92, Math.round(rawY)));
+                  handleMovePlayerToPitchPosition(draggedId, pitchX, pitchY);
+                }}
               >
                 {/* Pitch Markings SVG Overlay */}
                 <div className="absolute inset-0 pointer-events-none opacity-40">
@@ -503,6 +829,11 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                   const isSelected = selectedPlayerId === p.id;
                   const isUnavailable = p.injury.isInjured || p.suspension.isSuspended;
                   const fit = getPositionFitOvr(p, item.position);
+                  const coords = getMorphedCoordinates(item);
+
+                  const initialOvr = p.initialOvr ?? p.ovr;
+                  const exactOvr = p.exactOvr ?? p.ovr;
+                  const growthDelta = Math.round((exactOvr - initialOvr) * 10) / 10;
 
                   return (
                     <div
@@ -517,6 +848,7 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                         e.dataTransfer.dropEffect = 'move';
                       }}
                       onDrop={(e) => {
+                        e.stopPropagation();
                         e.preventDefault();
                         const draggedId = e.dataTransfer.getData('text/plain') || selectedPlayerId;
                         if (draggedId && draggedId !== p.id) {
@@ -536,8 +868,8 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                       }}
                       style={{
                         position: 'absolute',
-                        left: `${item.pitchX}%`,
-                        top: `${item.pitchY}%`,
+                        left: `${coords.x}%`,
+                        top: `${coords.y}%`,
                         transform: 'translate(-50%, -50%)',
                         touchAction: 'manipulation',
                         transition: 'left 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)'
@@ -548,13 +880,13 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                           : 'hover:scale-105 hover:z-20'
                       }`}
                     >
-                      {/* Position Tag + Fit Grade Badge (Requirement 1: ポジション適性再計算) */}
+                      {/* Position Tag + Fit Grade Badge + Growth Indicator */}
                       <div className="flex items-center gap-0.5 mb-0.5 shadow-md">
                         <span className="px-1.5 py-0.2 rounded-l text-[10px] font-black uppercase bg-slate-950/95 text-emerald-400 border-l border-y border-slate-700">
                           {item.position}
                         </span>
                         <span 
-                          className={`px-1 py-0.2 rounded-r text-[9px] font-black border-r border-y border-slate-700 ${
+                          className={`px-1 py-0.2 text-[9px] font-black border-y border-slate-700 ${
                             fit.fitGrade === 'S' ? 'bg-emerald-600 text-white' :
                             fit.fitGrade === 'A' ? 'bg-blue-600 text-white' :
                             fit.fitGrade === 'B' ? 'bg-amber-600 text-white' :
@@ -564,6 +896,16 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                         >
                           {fit.fitGrade}
                         </span>
+                        {growthDelta !== 0 && (
+                          <span 
+                            className={`px-1 py-0.2 rounded-r text-[9px] font-mono font-black border-r border-y border-slate-700 ${
+                              growthDelta > 0 ? 'bg-emerald-800 text-emerald-200' : 'bg-rose-800 text-rose-200'
+                            }`}
+                            title={`能力変動: ${growthDelta > 0 ? `+${growthDelta}` : growthDelta}`}
+                          >
+                            {growthDelta > 0 ? `+${growthDelta}` : growthDelta}
+                          </span>
+                        )}
                       </div>
 
                       {/* Circle Avatar / Number (Enlarged size: w-12 h-12 sm:w-14 sm:h-14) */}
@@ -663,6 +1005,7 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                       <th className="py-1.5 px-2">選手名</th>
                       <th className="py-1.5 px-1 text-center">調子</th>
                       <th className="py-1.5 px-2 text-right">OVR</th>
+                      <th className="py-1.5 px-2 text-center">成長</th>
                       <th className="py-1.5 px-2 text-right">疲労</th>
                       <th className="py-1.5 px-2 text-center">状態</th>
                       <th className="py-1.5 px-2 text-center">変更</th>
@@ -674,6 +1017,10 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                       const isSelected = selectedPlayerId === p.id;
                       const isInjured = p.injury.isInjured;
                       const isSuspended = p.suspension.isSuspended;
+
+                      const initialOvr = p.initialOvr ?? p.ovr;
+                      const exactOvr = p.exactOvr ?? p.ovr;
+                      const growthDelta = Math.round((exactOvr - initialOvr) * 10) / 10;
 
                       return (
                         <tr 
@@ -727,6 +1074,20 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                           </td>
                           <td className="py-2.5 px-2 text-right font-mono font-bold text-white text-xs sm:text-sm">
                             {p.ovr}
+                          </td>
+                          <td className="py-2.5 px-2 text-center" onClick={(e) => { e.stopPropagation(); onSelectPlayer(p); }}>
+                            {growthDelta !== 0 ? (
+                              <span 
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold cursor-pointer hover:opacity-80 transition-opacity ${
+                                  growthDelta > 0 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-rose-950 text-rose-400 border border-rose-800'
+                                }`}
+                                title="クリックして選手成長レポートを開く"
+                              >
+                                {growthDelta > 0 ? `+${growthDelta}` : growthDelta}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-500 font-mono">-</span>
+                            )}
                           </td>
                           <td className="py-2.5 px-2 text-right font-mono">
                             <span className={p.fatigue > 40 ? 'text-red-400' : 'text-slate-400'}>
@@ -850,6 +1211,22 @@ export const TacticsSquadTab: React.FC<Props> = ({ state, onUpdateTactics, onSel
                       <div className="flex items-center gap-2">
                         {renderConditionDot(p.condition)}
                         <span className="text-xs font-mono font-bold text-white">{p.ovr}</span>
+                        {(() => {
+                          const bInit = p.initialOvr ?? p.ovr;
+                          const bExact = p.exactOvr ?? p.ovr;
+                          const bDelta = Math.round((bExact - bInit) * 10) / 10;
+                          if (bDelta === 0) return null;
+                          return (
+                            <span 
+                              className={`px-1 py-0.5 rounded text-[9px] font-mono font-bold ${
+                                bDelta > 0 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-rose-950 text-rose-400 border border-rose-800'
+                              }`}
+                              title={`成長差分: ${bDelta > 0 ? `+${bDelta}` : bDelta}`}
+                            >
+                              {bDelta > 0 ? `+${bDelta}` : bDelta}
+                            </span>
+                          );
+                        })()}
                         {selectedPlayerId && selectedPlayerId !== p.id ? (
                           <button
                             type="button"

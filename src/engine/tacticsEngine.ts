@@ -729,7 +729,56 @@ export function updateTacticsFormation(
     }
   }
 
-  // Fill any unassigned slots
+  // Realistic bench swap: If any slot ended up with an empty playerId OR a severe mismatch (Grade D / penalty >= 18)
+  // find the best matching player from bench/reserves so that defenders defend, midfielders midfield, attackers attack
+  let newBench = [...(currentTactics.lineup?.bench || [])];
+  if (playersMap) {
+    for (let slIdx = 0; slIdx < template.length; slIdx++) {
+      const slot = template[slIdx];
+      const currentAssignedId = newStarters[slIdx]?.playerId;
+      const currentPlayer = currentAssignedId ? playersMap[currentAssignedId] : null;
+      const fit = currentPlayer ? getPositionFitOvr(currentPlayer, slot.position) : null;
+
+      const isSevereMismatch = !currentAssignedId || (fit && fit.fitGrade === 'D');
+      if (isSevereMismatch && newBench.length > 0) {
+        // Find best bench candidate for this slot
+        let bestBenchIdx = -1;
+        let bestBenchScore = -Infinity;
+
+        newBench.forEach((bId, bIdx) => {
+          const bp = playersMap[bId];
+          if (!bp) return;
+          const bFit = getPositionFitOvr(bp, slot.position);
+          if (bFit.fitGrade === 'S' || bFit.fitGrade === 'A' || bFit.fitGrade === 'B') {
+            const bScore = 100 - bFit.penalty * 3 + bp.ovr;
+            if (bScore > bestBenchScore) {
+              bestBenchScore = bScore;
+              bestBenchIdx = bIdx;
+            }
+          }
+        });
+
+        if (bestBenchIdx !== -1) {
+          const chosenBenchId = newBench[bestBenchIdx];
+          // Remove from bench
+          newBench.splice(bestBenchIdx, 1);
+          // If there was an old starter, send them to bench
+          if (currentAssignedId) {
+            newBench.push(currentAssignedId);
+          }
+          // Assign to slot
+          newStarters[slIdx] = {
+            playerId: chosenBenchId,
+            position: slot.position,
+            pitchX: slot.pitchX,
+            pitchY: slot.pitchY
+          };
+        }
+      }
+    }
+  }
+
+  // Fill any remaining unassigned slots
   for (let slIdx = 0; slIdx < template.length; slIdx++) {
     if (!newStarters[slIdx]) {
       const slot = template[slIdx];
@@ -747,7 +796,8 @@ export function updateTacticsFormation(
     formation: newFormation,
     lineup: {
       ...currentTactics.lineup,
-      starters: newStarters
+      starters: newStarters,
+      bench: newBench
     }
   };
 }

@@ -117,6 +117,7 @@ export interface Player {
   altPositions: Position[];
   preferredFoot: '右' | '左' | '両足';
   ovr: number;
+  initialOvr?: number; // Starting OVR to track season net growth (+1, +2, etc.)
   exactOvr?: number; // Continuous fractional OVR (e.g. 78.2) for long-term growth
   ovrGrowthProgress?: number;
   matchRatingsHistory?: number[];

@@ -246,6 +246,75 @@ export const HomeDashboardTab: React.FC<Props> = ({
         </div>
       </div>
 
+      {/* Squad Growth Spotlight Widget (選手成長の可視化ハイライト) */}
+      {userClub && (
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                選手成長ハイライト (Squad Development Spotlight)
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigateTab('tactics')}
+              className="text-xs text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <span>戦術ボードで全選手確認</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {Object.values(state.players)
+              .filter(p => p.clubId === state.userClubId)
+              .map(p => {
+                const initOvr = p.initialOvr ?? p.ovr;
+                const exactOvr = p.exactOvr ?? p.ovr;
+                const delta = Math.round((exactOvr - initOvr) * 10) / 10;
+                return { player: p, delta };
+              })
+              .sort((a, b) => b.delta - a.delta)
+              .slice(0, 4)
+              .map(({ player: p, delta }) => (
+                <div 
+                  key={p.id}
+                  onClick={() => onNavigateTab('tactics')}
+                  className="bg-slate-950/80 border border-slate-800/90 rounded-2xl p-3 cursor-pointer hover:border-emerald-500/50 transition-all flex flex-col justify-between"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-bold bg-blue-950 text-blue-300 px-1.5 py-0.5 rounded border border-blue-800">
+                      {p.position}
+                    </span>
+                    <span 
+                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        delta > 0 
+                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' 
+                          : delta < 0
+                            ? 'bg-rose-950 text-rose-400 border border-rose-800'
+                            : 'bg-slate-900 text-slate-400'
+                      }`}
+                    >
+                      {delta > 0 ? `+${delta.toFixed(1)}` : delta < 0 ? `${delta.toFixed(1)}` : '±0.0'}
+                    </span>
+                  </div>
+
+                  <div className="my-2">
+                    <h4 className="text-sm font-bold text-white truncate">{p.name}</h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">{p.age}歳 · POT {p.potential || (p.ovr + 5)}</p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-xs">
+                    <span className="text-slate-400 text-[10px]">現在能力</span>
+                    <span className="font-mono font-black text-white text-sm">OVR {p.ovr}</span>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Breaking News Feed (Linked to Game Events) */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
